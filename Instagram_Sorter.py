@@ -1,7 +1,6 @@
 import csv
 import os
 
-
 def main():
     boys_dict = dict()
     picture_dir = "E:\OneDrive\Pictures"
