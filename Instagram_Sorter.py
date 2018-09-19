@@ -81,7 +81,7 @@ def sorting_function(boys_dict, in_dir, out_dir):
             print(str(current_file) + " successfully sorted to " + out_dir + " as " + new_filename_without_ext)
         else:
             print("Could not process: " + str(current_file))
-    print("done")
+    print("Done sorting.")
 
 
 def fix_numbering_for_boys_in_dir(dir):
@@ -165,6 +165,7 @@ def fix_numbering_for_boys_in_dir(dir):
             # print("Currently Processing: " + current_boy_name + " " + str(current_pic_counter) + ", inserted at position: " + str(current_pic_counter))
         previous_boy_name = current_boy_name
         # print("current_boy_list: " + str(current_boy_list))
+    print("Done fixing numbering.")
 
 
 if __name__ == '__main__':
