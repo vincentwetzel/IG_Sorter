@@ -44,7 +44,6 @@ def main():
         for directory in error_directories:
             os.startfile(directory)
 
-
 def sorting_function(boys_dict, in_dir, out_dir):
     # Initialize variables
     file_name_as_list_of_name0_and_ext1 = ""
