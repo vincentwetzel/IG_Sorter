@@ -2,6 +2,9 @@ import csv
 import os
 import re
 
+errors_list = list()
+error_directories = list()
+
 
 def main():
     # Initialize variables
@@ -19,18 +22,27 @@ def main():
             # print("ROW:" + str(row))
             boys_dict[row["Account"]] = row["Name"]
 
-    print("-" * 50 + "\nChecking ordering in NSFW\n" + "-" * 50)
+    print_section("Checking ordering in " + str(root_picture_directory) + "\\NSFW", "-")
     fix_numbering_for_boys_in_dir(root_picture_directory + "\\NSFW")
-    print("-" * 50 + "\nChecking ordering in SFW\n" + "-" * 50)
+    print_section("Checking ordering in " + str(root_picture_directory) + "\\MSFW", "-")
+    fix_numbering_for_boys_in_dir(root_picture_directory + "\\MSFW")
+    print_section("Checking ordering in " + str(root_picture_directory) + "\\SFW", "-")
     fix_numbering_for_boys_in_dir(root_picture_directory + "\\SFW")
 
     # Prepping done, now sort new pics
-    print("-" * 50 + "\nSorting new pics in NSFW\n" + "-" * 50)
+    print_section("Sorting new pics in " + str(root_picture_directory) + "\\NSFW", "-")
     sorting_function(boys_dict, root_picture_directory + "\\NEED TO SORT (NSFW)", root_picture_directory + "\\NSFW")
-    print("-" * 50 + "\nSorting new pics in SFW\n" + "-" * 50)
+    print_section("Sorting new pics in " + str(root_picture_directory) + "\\MSFW", "-")
+    sorting_function(boys_dict, root_picture_directory + "\\NEED TO SORT (MSFW)", root_picture_directory + "\\MSFW")
+    print_section("Sorting new pics in " + str(root_picture_directory) + "\\SFW", "-")
     sorting_function(boys_dict, root_picture_directory + "\\NEED TO SORT (SFW)", root_picture_directory + "\\SFW")
 
-
+    print("\n\nTOTAL ERRORS: " + str(len(errors_list)) + "\n")
+    if len(errors_list) > 0:
+        for error in errors_list:
+            print(error)
+        for directory in error_directories:
+            os.startfile(directory)
 
 
 def sorting_function(boys_dict, in_dir, out_dir):
@@ -80,12 +92,17 @@ def sorting_function(boys_dict, in_dir, out_dir):
                       out_dir + "\\" + new_filename_without_ext + "." + str(file_name_as_list_of_name0_and_ext1[1]))
             print(str(current_file) + " successfully sorted to " + out_dir + " as " + new_filename_without_ext)
         else:
-            print("Could not process: " + str(current_file))
-    print("Done sorting.")
+            msg = ">>>Could not process: " + str(current_file)
+            print(msg)
+            global errors_list
+            global error_directories
+            errors_list.append(msg + " in " + in_dir)
+            if in_dir not in error_directories:
+                error_directories.append(in_dir)
+    print("Done sorting from " + str(in_dir) + " to " + str(out_dir) + ".")
 
 
 def fix_numbering_for_boys_in_dir(dir):
-
     # Initialize variables
     previous_boy_name = None
     current_boy_name = ""
@@ -98,31 +115,27 @@ def fix_numbering_for_boys_in_dir(dir):
     # Get all the shit in my current working directory
     os.chdir(dir)  # changes current working directory
     files_list = os.listdir(os.getcwd())
-    files_list.remove("Thumbs.db")
+    try:
+        files_list.remove("Thumbs.db")
+    except ValueError:
+        print(">>>ValueError Exception: Thumbs.db does not exist in " + str(dir))
 
     # Compile files_list into boy_names_and_numbers_list_of_lists, we will sort it in a minute
     for current_file in files_list:
         file_name_as_list_of_name0_and_ext1 = list(os.path.splitext(os.path.basename(current_file)))
-        # print(str(file_name_as_list_of_name0_and_ext1))
 
         current_boy_name = re.search(r"[^0-9]+", file_name_as_list_of_name0_and_ext1[0]).group().rstrip()
         current_pic_counter = int(re.search(r"[0-9]+", file_name_as_list_of_name0_and_ext1[0]).group())  # pic_counter
-        # print("Currently Processing: " + current_boy_name + " " + str(current_pic_counter))
 
         if previous_boy_name == current_boy_name:
             if current_pic_counter > max_pic_counter:
                 max_pic_counter = current_pic_counter
-                # print("max_pic_counter incremented to:" + str(max_pic_counter))
             if max_pic_counter > len(current_boy_list) + 1:
                 current_boy_list[len(current_boy_list): max_pic_counter + 1] = [None] * (
                         max_pic_counter - len(current_boy_list))
-                # print("current_boy_list has grown to size: " + str(len(current_boy_list)))
-                # print("current_boy_list: " + str(current_boy_list))
             current_boy_list.insert(current_pic_counter, current_file)
             if current_pic_counter != max_pic_counter and current_boy_list[current_pic_counter + 1] is None:
                 current_boy_list.pop(current_pic_counter + 1)
-
-            # print("Currently Processing: " + current_boy_name + " " + str(current_pic_counter) + ", inserted at position: " + str(current_pic_counter))
 
         else:
             counter_should_be = 1
@@ -138,7 +151,6 @@ def fix_numbering_for_boys_in_dir(dir):
                                                        pic_file_name_as_list_of_name0_and_ext1[0]).group().rstrip()
                     inner_current_pic_counter = int(
                         re.search(r"[0-9]+", pic_file_name_as_list_of_name0_and_ext1[0]).group())  # pic_counter
-                    # print(">Inner loop: Currently processing: " + inner_current_boy_name + " " + str(inner_current_pic_counter))
 
                     if inner_current_pic_counter != counter_should_be:
                         print(">>NUMBERING PROBLEM: Currently processing: " + inner_current_boy_name + " " + str(
@@ -149,10 +161,6 @@ def fix_numbering_for_boys_in_dir(dir):
                         print("File: " + str(picture_of_current_boy) + " renamed to: " + new_file_name_and_ext)
 
                     counter_should_be += 1
-                    # Then reset the list to empty and put the first element in it.
-                else:
-                    pass
-                    # print("None value at position " + str(loop_counter))
                 loop_counter += 1
 
             max_pic_counter = current_pic_counter
@@ -160,12 +168,14 @@ def fix_numbering_for_boys_in_dir(dir):
             if max_pic_counter > len(current_boy_list) + 1:
                 current_boy_list[len(current_boy_list): max_pic_counter + 1] = [None] * (
                         max_pic_counter - len(current_boy_list))
-                # print("current_boy_list INITIAL size is: " + str(len(current_boy_list)))
             current_boy_list.insert(current_pic_counter, current_file)
-            # print("Currently Processing: " + current_boy_name + " " + str(current_pic_counter) + ", inserted at position: " + str(current_pic_counter))
         previous_boy_name = current_boy_name
         # print("current_boy_list: " + str(current_boy_list))
-    print("Done fixing numbering.")
+    print("Done fixing numbering in " + str(dir) + ".")
+
+
+def print_section(title, symbol):
+    print("\n" + (symbol * 50) + "\n" + title + "\n" + (symbol * 50) + "\n")
 
 
 if __name__ == '__main__':
