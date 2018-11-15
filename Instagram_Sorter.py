@@ -49,17 +49,17 @@ def main():
     # Print errors if any exist
     if errors_dict:
         print_section("PROBLEMS", "-")
-        for key in errors_dict:
-            for val in errors_dict[key]:
+        for photographer_name in errors_dict:
+            for val in errors_dict[photographer_name]:
                 print(val)
-            if key in photographers_list:
+            if photographer_name in photographers_list:
                 user_input = input(
-                    "We have found photograher " + key + " in this batch. Are all this photographer's pitures of the same boy? (y/n)").lower()
+                    "We have found photograher " + photographer_name + " in this batch. Are all this photographer's pitures of the same boy? (y/n)").lower()
                 if user_input == "y" or user_input == "yes":
                     boy = input(
                         "Please enter the boy's name: ")
                     if boy in boys_dictionary_file or boy in boys_dict.values():
-                        print("I found him!")
+                        print("BOY: " + boy)
                     else:
                         print("That didn't work. We'll pass on this for now.")
         os.startfile(os.path.join(sys.path[0], boys_dictionary_file))
@@ -75,11 +75,11 @@ def main():
         os.startfile(directory)
 
     # Open the Instagram pages for problem accounts
-    for key in errors_dict:
-        if key == "Screenshot":
+    for photographer_name in errors_dict:
+        if photographer_name == "Screenshot":
             continue
-        print(key)
-        webbrowser.open("".join(["https://www.instagram.com/", key]))
+        print(photographer_name)
+        webbrowser.open("".join(["https://www.instagram.com/", photographer_name]))
 
 
 def sort_new_pictures(boys_dict, in_dir, out_dir):
@@ -131,9 +131,8 @@ def sort_new_pictures(boys_dict, in_dir, out_dir):
 
             # Case 2: FastSave Android App
             elif "___" in file_name_as_list_of_name0_and_ext1[0]:
-                current_boy_containing_potential_numbering = re.search(r".+?(?=_{3,})",
+                current_boy_containing_potential_numbering = re.search(r".+?(?=_{3,})(?!_{4,})",
                                                                        file_name_as_list_of_name0_and_ext1[0]).group(0)
-                print("current_boy_containing_potential_numbering: " + current_boy_containing_potential_numbering)
 
                 # Strip the numbers out if needed
                 if re.search(r".+?(?=_[0-9])", current_boy_containing_potential_numbering) is not None:
