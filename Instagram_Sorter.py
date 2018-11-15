@@ -6,7 +6,10 @@ import webbrowser
 
 # Directories
 root_picture_directory = "E:\OneDrive\Pictures"
-subdirectories_list = ["NSFW", "MSFW", "SFW"]
+subdirectories_dict = {
+    os.path.join(root_picture_directory, "NEED TO SORT (NSFW)"): os.path.join(root_picture_directory, "NSFW"),
+    os.path.join(root_picture_directory, "NEED TO SORT (MSFW)"): os.path.join(root_picture_directory, "MSFW"),
+    os.path.join(root_picture_directory, "NEED TO SORT (SFW)"): os.path.join(root_picture_directory, "SFW")}
 
 # Data files
 boys_dictionary_file = "boys.csv"  # You can call this whatever you want.
@@ -15,7 +18,7 @@ photographers_list_file = "photographers.txt"
 photographers_list = dict()
 
 # Error handling
-errors_dict = dict()  # Tracks all the files that there were issues sorting
+errors_dict = dict()  # Key = Instagram Name, Val = filename
 error_directories = list()  # Keep track of the directories where there were problems, open them at end of script.
 
 # Counters
@@ -28,41 +31,47 @@ def main():
     global boys_dict
     global root_picture_directory
     global files_renamed_count
-    global subdirectories_list
+    global subdirectories_dict
     global new_files_successfully_processed
     global photographers_list
 
     initialize_data()
 
     # Check ordering of existing sorted files.
-    for subdir in subdirectories_list:
+    for subdir in subdirectories_dict.values():
         print_section("Checking ordering in " + str(os.path.join(root_picture_directory, subdir)), "-")
         fix_numbering(os.path.join(root_picture_directory, subdir))
 
     # Prepping done, now sort new pics
-    for subdir in subdirectories_list:
+    for subdir in subdirectories_dict:
         print_section("Sorting new pics in " + str(os.path.join(root_picture_directory, subdir)), "-")
-        sort_new_pictures(boys_dict,
-                          os.path.join(root_picture_directory, "NEED TO SORT (" + subdir + ")"),
-                          os.path.join(root_picture_directory, subdir))
+        sort_new_pictures(boys_dict, subdir, subdirectories_dict[subdir])
 
     # Print errors if any exist
     if errors_dict:
         print_section("PROBLEMS", "-")
-        for key in errors_dict:
-            for val in errors_dict[key]:
-                print(val)
-            if key in photographers_list:
+        for instagram_name in list(errors_dict.keys()):
+            for filename in errors_dict[instagram_name]:
+                print(filename)
+            if instagram_name in photographers_list:
                 user_input = input(
-                    "We have found photograher " + key + " in this batch. Are all this photographer's pitures of the same boy? (y/n)").lower()
+                    "We have found " + str(len(errors_dict[
+                                                   instagram_name])) + " pictures from photograher \"" + instagram_name + "\" in this batch. Are all this photographer's pitures of the same boy? (y/n)").lower()
                 if user_input == "y" or user_input == "yes":
-                    boy = input(
+                    boy_irl_name = input(
                         "Please enter the boy's name: ")
-                    if boy in boys_dictionary_file or boy in boys_dict.values():
+                    if boy_irl_name in boys_dict or boy_irl_name in boys_dict.values():
                         print("I found him!")
+                        for filename in errors_dict[instagram_name]:
+                            name_file_to_next_available_name(filename, os.path.dirname(filename),
+                                                             subdirectories_dict[os.path.dirname(filename)], boy_irl_name)
+                        errors_dict.pop(instagram_name)
                     else:
                         print("That didn't work. We'll pass on this for now.")
-        os.startfile(os.path.join(sys.path[0], boys_dictionary_file))
+                else:
+                    print("Ok, we will skip this photographer for now.")
+        if "Screenshot" not in errors_dict or len(errors_dict) > 1:
+            os.startfile(os.path.join(sys.path[0], boys_dictionary_file))
 
     # Print a final report
     print_section("FINAL REPORT", "-")
@@ -75,11 +84,11 @@ def main():
         os.startfile(directory)
 
     # Open the Instagram pages for problem accounts
-    for key in errors_dict:
-        if key == "Screenshot":
+    for instagram_name in errors_dict:
+        if instagram_name == "Screenshot":
             continue
-        print(key)
-        webbrowser.open("".join(["https://www.instagram.com/", key]))
+        print(instagram_name)
+        webbrowser.open("".join(["https://www.instagram.com/", instagram_name]))
 
 
 def sort_new_pictures(boys_dict, in_dir, out_dir):
@@ -100,7 +109,13 @@ def sort_new_pictures(boys_dict, in_dir, out_dir):
         new_files_exist = True
 
     # For each file in the directory, search the CSV file for a match
-    for current_file in os.listdir(in_dir):
+    file_paths = []
+    for folder, subs, files in os.walk(in_dir):
+        for filename in files:
+            file_paths.append(os.path.abspath(os.path.join(folder, filename)))
+
+    for full_file_path in file_paths:
+        current_file = os.path.basename(full_file_path)
         match_found = False
         file_name_as_list_of_name0_and_ext1 = list(os.path.splitext(os.path.basename(current_file)))
         counter = 1
@@ -131,21 +146,13 @@ def sort_new_pictures(boys_dict, in_dir, out_dir):
 
             # Case 2: FastSave Android App
             elif "___" in file_name_as_list_of_name0_and_ext1[0]:
-                current_boy_containing_potential_numbering = re.search(r".+?(?=_{3,})",
-                                                                       file_name_as_list_of_name0_and_ext1[0]).group(0)
-                print("current_boy_containing_potential_numbering: " + current_boy_containing_potential_numbering)
+                current_boy_IG_name = re.search(r".+?(?=_[0-9]*_{3,})|.+?(?=_{3,})",
+                                                file_name_as_list_of_name0_and_ext1[0]).group(0)
 
-                # Strip the numbers out if needed
-                if re.search(r".+?(?=_[0-9])", current_boy_containing_potential_numbering) is not None:
-                    current_boy_raw_IG_name = re.search(r".+?(?=_[0-9])",
-                                                        current_boy_containing_potential_numbering).group(0)
+                if current_boy_IG_name not in errors_dict:
+                    errors_dict[current_boy_IG_name] = [full_file_path]
                 else:
-                    current_boy_raw_IG_name = current_boy_containing_potential_numbering
-
-                if current_boy_raw_IG_name not in errors_dict:
-                    errors_dict[current_boy_raw_IG_name] = [current_file]
-                else:
-                    errors_dict[current_boy_raw_IG_name].append(current_file)
+                    errors_dict[current_boy_IG_name].append(full_file_path)
             # Case 3: Chrome Downloader for Instagram
             elif "_n" in file_name_as_list_of_name0_and_ext1[0]:
                 raise Exception("Need to implement code for pictures downloaded from Chrome.")
@@ -259,13 +266,15 @@ def initialize_data():
         photographers_list = f.readlines()
 
 
-def name_file_to_next_available_name(filename, in_dir, out_dir):
+def name_file_to_next_available_name(filename, in_dir, out_dir, boy_irl_name=None):
     next_number_for_filename = 1
     new_filename_without_ext = ""
 
     os.chdir(in_dir)
-    file_name_as_list_of_name0_and_ext1 = list(os.path.splitext(os.path.basename(filename)))
-
+    if boy_irl_name is None:
+        file_name_as_list_of_name0_and_ext1 = list(os.path.splitext(os.path.basename(filename)))
+    else:
+        file_name_as_list_of_name0_and_ext1 = [boy_irl_name, os.path.splitext(filename)[1]]
     # If the file contains numbering already, strip that out.
     if re.search(r".+?(?=[0-9])", file_name_as_list_of_name0_and_ext1[0]) is not None:
         file_name_as_list_of_name0_and_ext1[0] = str(
@@ -277,7 +286,7 @@ def name_file_to_next_available_name(filename, in_dir, out_dir):
 
     os.chdir(out_dir)
     while True:
-        new_filename_without_ext = file_name_as_list_of_name0_and_ext1[0] + str(
+        new_filename_without_ext = file_name_as_list_of_name0_and_ext1[0] + " " + str(
             next_number_for_filename)
         if new_filename_without_ext in file_names_in_output_directory:
             next_number_for_filename += 1
