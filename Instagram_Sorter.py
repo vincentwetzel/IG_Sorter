@@ -64,7 +64,8 @@ def main():
                         print("I found him!")
                         for filename in errors_dict[instagram_name]:
                             name_file_to_next_available_name(filename, os.path.dirname(filename),
-                                                             subdirectories_dict[os.path.dirname(filename)], boy_irl_name)
+                                                             subdirectories_dict[os.path.dirname(filename)],
+                                                             boy_irl_name)
                         errors_dict.pop(instagram_name)
                     else:
                         print("That didn't work. We'll pass on this for now.")
