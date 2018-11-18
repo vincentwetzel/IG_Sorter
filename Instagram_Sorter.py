@@ -13,13 +13,12 @@ subdirectories_dict = {
 
 # Data files
 boys_dictionary_file = "boys.csv"  # You can call this whatever you want.
-boys_dict = dict()
+boys_dict = dict()  # { "Account":  "irl_name" }
 photographers_list_file = "photographers.txt"
 photographers_list = dict()
 
 # Error handling
-errors_dict = dict()  # Key = Instagram Name, Val = filename
-error_directories = list()  # Keep track of the directories where there were problems, open them at end of script.
+errors_dict = dict()  # Key = Instagram Name, Val = full_filename
 
 # Counters
 files_renamed_count = 0
@@ -50,23 +49,24 @@ def main():
     # Print errors if any exist
     if errors_dict:
         print_section("PROBLEMS", "-")
-        for instagram_name in list(errors_dict.keys()):
-            for filename in errors_dict[instagram_name]:
+        for ig_name in list(errors_dict.keys()):
+            for filename in errors_dict[ig_name]:
                 print(filename)
-            if instagram_name in photographers_list:
+            if ig_name in photographers_list:
                 user_input = input(
                     "We have found " + str(len(errors_dict[
-                                                   instagram_name])) + " pictures from photograher \"" + instagram_name + "\" in this batch. Are all this photographer's pitures of the same boy? (y/n)").lower()
+                                                   ig_name])) + " pictures from photograher \"" + ig_name + "\" in this batch. Are all this photographer's pitures of the same boy? (y/n)").lower()
                 if user_input == "y" or user_input == "yes":
                     boy_irl_name = input(
                         "Please enter the boy's name: ")
                     if boy_irl_name in boys_dict or boy_irl_name in boys_dict.values():
                         print("I found him!")
-                        for filename in errors_dict[instagram_name]:
+                        for filename in errors_dict[ig_name]:
                             name_file_to_next_available_name(filename, os.path.dirname(filename),
                                                              subdirectories_dict[os.path.dirname(filename)],
                                                              boy_irl_name)
-                        errors_dict.pop(instagram_name)
+                        errors_dict.pop(ig_name)
+
                     else:
                         print("That didn't work. We'll pass on this for now.")
                 else:
@@ -81,33 +81,35 @@ def main():
     print("TOTAL ERRORS: " + str(sum(len(v) for v in errors_dict.values())) + "\n")
 
     # Open the directories with problem files
-    for directory in error_directories:
-        os.startfile(directory)
+    error_directories = list()
+    for path in errors_dict.values():
+        if os.path.dirname(path) not in error_directories:
+            error_directories.append(os.path.dirname(path))
+            os.startfile(os.path.dirname(path))
 
     # Open the Instagram pages for problem accounts
-    for instagram_name in errors_dict:
-        if instagram_name == "Screenshot":
+    for ig_name in errors_dict:
+        if ig_name == "Screenshot" or ig_name == "Edited Screenshot":
             continue
-        print(instagram_name)
-        webbrowser.open("".join(["https://www.instagram.com/", instagram_name]))
+        print(ig_name)
+        webbrowser.open("".join(["https://www.instagram.com/", ig_name]))
 
 
 def sort_new_pictures(boys_dict, in_dir, out_dir):
     # Globals
     global errors_dict
-    global error_directories
 
     # Initialize other variables
-    file_name_as_list_of_name0_and_ext1 = list()
+    boy_file_name = list()
     counter = 1
     match_found = False
     next_number_for_filename = 1
-    new_files_exist = False
+    directory_not_empty_at_start = False
 
     # adjust current working directory (cwd)
     os.chdir(in_dir)
     if os.listdir(in_dir):
-        new_files_exist = True
+        directory_not_empty_at_start = True
 
     # For each file in the directory, search the CSV file for a match
     file_paths = []
@@ -118,53 +120,56 @@ def sort_new_pictures(boys_dict, in_dir, out_dir):
     for full_file_path in file_paths:
         current_file = os.path.basename(full_file_path)
         match_found = False
-        file_name_as_list_of_name0_and_ext1 = list(os.path.splitext(os.path.basename(current_file)))
+        boy_file_name = os.path.splitext(os.path.basename(current_file))[0]
         counter = 1
-        while counter <= len(file_name_as_list_of_name0_and_ext1[0]) and match_found is False:
-            if file_name_as_list_of_name0_and_ext1[0][0:counter] in boys_dict.keys():
-                file_name_as_list_of_name0_and_ext1[0] = boys_dict[file_name_as_list_of_name0_and_ext1[0][0:counter]]
+        while counter <= len(boy_file_name) and match_found is False:
+            if boy_file_name[0:counter] in boys_dict.keys():
+                boy_file_name = boys_dict[boy_file_name[0:counter]]
                 match_found = True
-            elif file_name_as_list_of_name0_and_ext1[0][0:counter] in boys_dict.values():
-                file_name_as_list_of_name0_and_ext1[0] = file_name_as_list_of_name0_and_ext1[0][0:counter]
+            elif boy_file_name[0:counter] in boys_dict.values():
+                boy_file_name = boy_file_name[0:counter]
                 match_found = True
             else:
                 counter += 1
 
         if match_found:
             # A match has been found, now keep trying until I find the right counter and rename to that.
-            name_file_to_next_available_name(current_file, in_dir, out_dir)
+            name_file_to_next_available_name(current_file, in_dir, out_dir, boy_file_name)
         else:
             msg = ">>>Could not process: " + str(current_file)
             print(msg)
 
             # Case 1: Screnshots
             # If it is a screenshot, put it under the Screenshot key in the dictionary. This will be handled in the final report.
-            if "Screenshot" in file_name_as_list_of_name0_and_ext1[0]:
+            if "Screenshot" in boy_file_name:
                 if "Screenshot" not in errors_dict:
-                    errors_dict["Screenshot"] = [file_name_as_list_of_name0_and_ext1[0]]
+                    errors_dict["Screenshot"] = [full_file_path]
                 else:
-                    errors_dict["Screenshot"].append(file_name_as_list_of_name0_and_ext1[0])
+                    errors_dict["Screenshot"].append(full_file_path)
 
             # Case 2: FastSave Android App
-            elif "___" in file_name_as_list_of_name0_and_ext1[0]:
+            elif "___" in boy_file_name:
                 current_boy_IG_name = re.search(r".+?(?=_[0-9]*_{3,})|.+?(?=_{3,})",
-                                                file_name_as_list_of_name0_and_ext1[0]).group(0)
+                                                boy_file_name).group(0)
 
                 if current_boy_IG_name not in errors_dict:
                     errors_dict[current_boy_IG_name] = [full_file_path]
                 else:
                     errors_dict[current_boy_IG_name].append(full_file_path)
             # Case 3: Chrome Downloader for Instagram
-            elif "_n" in file_name_as_list_of_name0_and_ext1[0]:
+            elif "_n" in boy_file_name:
                 raise Exception("Need to implement code for pictures downloaded from Chrome.")
+            # Case 4: Editied Screenshot from phone
+            elif re.search(r"^[0-9]{6,8}_[0-9]{6}$", boy_file_name) is not None and str(
+                    re.search(r"^[0-9]{6,8}_[0-9]{6}$", boy_file_name).group(0)) in boy_file_name:
+                if "Edited Screenshot" not in errors_dict:
+                    errors_dict["Edited Screenshot"] = [full_file_path]
+                else:
+                    errors_dict["Edited Screenshot"].append(full_file_path)
             else:
-                raise Exception(
-                    "The file " + str(current_file) + " is not in a compatible format to sort with this script.")
+                raise Exception("EXCEPTION: Unknown file type!")
 
-            # Keep a list of the problem directories
-            if in_dir not in error_directories:
-                error_directories.append(in_dir)
-    if new_files_exist:
+    if directory_not_empty_at_start:
         print()
     print("Done sorting from " + str(in_dir) + " to " + str(out_dir) + ".")
 
@@ -263,8 +268,10 @@ def initialize_data():
         for row in reader:
             boys_dict[row["Account"]] = row["Name"]
 
-    with open(photographers_list_file, 'r', newline='') as f:
-        photographers_list = f.readlines()
+    with open(photographers_list_file, 'r') as f:
+        photographers_list = f.read().splitlines()
+        print("PHOTOGRAPHERS LIST:")
+        print(str(photographers_list))
 
 
 def name_file_to_next_available_name(filename, in_dir, out_dir, boy_irl_name=None):
@@ -274,8 +281,10 @@ def name_file_to_next_available_name(filename, in_dir, out_dir, boy_irl_name=Non
     os.chdir(in_dir)
     if boy_irl_name is None:
         file_name_as_list_of_name0_and_ext1 = list(os.path.splitext(os.path.basename(filename)))
+        print("file_name_as_list_of_name0_and_ext1 : " + str(file_name_as_list_of_name0_and_ext1))
     else:
         file_name_as_list_of_name0_and_ext1 = [boy_irl_name, os.path.splitext(filename)[1]]
+
     # If the file contains numbering already, strip that out.
     if re.search(r".+?(?=[0-9])", file_name_as_list_of_name0_and_ext1[0]) is not None:
         file_name_as_list_of_name0_and_ext1[0] = str(
@@ -296,7 +305,7 @@ def name_file_to_next_available_name(filename, in_dir, out_dir, boy_irl_name=Non
     new_filename_with_ext = new_filename_without_ext + file_name_as_list_of_name0_and_ext1[1]
     os.rename(os.path.join(in_dir, filename),
               os.path.join(out_dir, new_filename_with_ext))
-    print(str(filename) + " successfully sorted to " + out_dir + " as " + new_filename_without_ext)
+    print(str(filename) + " successfully sorted to " + out_dir + " as " + new_filename_with_ext)
     global new_files_successfully_processed
     new_files_successfully_processed += 1
 
