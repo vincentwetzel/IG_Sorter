@@ -18,7 +18,7 @@ photographers_list_file = "photographers.txt"
 photographers_list = dict()
 
 # Error handling
-errors_dict = dict()  # Key = Instagram Name, Val = full_filename
+error_boys_dict = dict()  # Key = Instagram Name, Val = LIST of full filenames
 
 # Counters
 files_renamed_count = 0
@@ -46,49 +46,51 @@ def main():
         print_section("Sorting new pics in " + str(os.path.join(root_picture_directory, subdir)), "-")
         sort_new_pictures(boys_dict, subdir, subdirectories_dict[subdir])
 
-    # Print errors if any exist
-    if errors_dict:
+    # Handle all errors that have been found
+    if error_boys_dict:
         print_section("PROBLEMS", "-")
-        for ig_name in list(errors_dict.keys()):
-            for filename in errors_dict[ig_name]:
-                print(filename)
+        for ig_name in list(error_boys_dict.keys()):
             if ig_name in photographers_list:
                 user_input = input(
-                    "We have found " + str(len(errors_dict[
+                    "We have found " + str(len(error_boys_dict[
                                                    ig_name])) + " pictures from photograher \"" + ig_name + "\" in this batch. Are all this photographer's pitures of the same boy? (y/n)").lower()
                 if user_input == "y" or user_input == "yes":
                     boy_irl_name = input(
                         "Please enter the boy's name: ")
                     if boy_irl_name in boys_dict or boy_irl_name in boys_dict.values():
                         print("I found him!")
-                        for filename in errors_dict[ig_name]:
+                        for filename in error_boys_dict[ig_name]:
                             name_file_to_next_available_name(filename, os.path.dirname(filename),
                                                              subdirectories_dict[os.path.dirname(filename)],
                                                              boy_irl_name)
-                        errors_dict.pop(ig_name)
+                        error_boys_dict.pop(ig_name)
 
                     else:
                         print("That didn't work. We'll pass on this for now.")
                 else:
                     print("Ok, we will skip this photographer for now.")
-        if "Screenshot" not in errors_dict or len(errors_dict) > 1:
+            else:
+                for filename in error_boys_dict[ig_name]:
+                    print(filename)
+        if "Screenshot" not in error_boys_dict or len(error_boys_dict) > 1:
             os.startfile(os.path.join(sys.path[0], boys_dictionary_file))
 
     # Print a final report
     print_section("FINAL REPORT", "-")
     print("NUMBER OF FILES RENAMED: " + str(files_renamed_count))
     print("NUMBER OF NEW FILES SORTED: " + str(new_files_successfully_processed))
-    print("TOTAL ERRORS: " + str(sum(len(v) for v in errors_dict.values())) + "\n")
+    print("TOTAL ERRORS: " + str(sum(len(v) for v in error_boys_dict.values())) + "\n")
 
     # Open the directories with problem files
     error_directories = list()
-    for path in errors_dict.values():
-        if os.path.dirname(path) not in error_directories:
-            error_directories.append(os.path.dirname(path))
-            os.startfile(os.path.dirname(path))
+    for list_of_paths in error_boys_dict.values():
+        for path in list_of_paths:
+            if not os.path.dirname(path) in error_directories:
+                error_directories.append(os.path.dirname(path))
+                os.startfile(os.path.dirname(path))
 
     # Open the Instagram pages for problem accounts
-    for ig_name in errors_dict:
+    for ig_name in error_boys_dict:
         if ig_name == "Screenshot" or ig_name == "Edited Screenshot":
             continue
         print(ig_name)
@@ -97,7 +99,7 @@ def main():
 
 def sort_new_pictures(boys_dict, in_dir, out_dir):
     # Globals
-    global errors_dict
+    global error_boys_dict
 
     # Initialize other variables
     boy_file_name = list()
@@ -119,6 +121,9 @@ def sort_new_pictures(boys_dict, in_dir, out_dir):
 
     for full_file_path in file_paths:
         current_file = os.path.basename(full_file_path)
+        if current_file == "desktop.ini" or current_file == "Thumbs.db":
+            continue
+
         match_found = False
         boy_file_name = os.path.splitext(os.path.basename(current_file))[0]
         counter = 1
@@ -142,36 +147,53 @@ def sort_new_pictures(boys_dict, in_dir, out_dir):
             # Case 1: Screnshots
             # If it is a screenshot, put it under the Screenshot key in the dictionary. This will be handled in the final report.
             if "Screenshot" in boy_file_name:
-                if "Screenshot" not in errors_dict:
-                    errors_dict["Screenshot"] = [full_file_path]
+                if "Screenshot" not in error_boys_dict:
+                    error_boys_dict["Screenshot"] = [full_file_path]
                 else:
-                    errors_dict["Screenshot"].append(full_file_path)
+                    error_boys_dict["Screenshot"].append(full_file_path)
 
             # Case 2: FastSave Android App
             elif "___" in boy_file_name:
                 current_boy_IG_name = re.search(r".+?(?=_[0-9]*_{3,})|.+?(?=_{3,})",
                                                 boy_file_name).group(0)
 
-                if current_boy_IG_name not in errors_dict:
-                    errors_dict[current_boy_IG_name] = [full_file_path]
+                if current_boy_IG_name not in error_boys_dict:
+                    error_boys_dict[current_boy_IG_name] = [full_file_path]
                 else:
-                    errors_dict[current_boy_IG_name].append(full_file_path)
+                    error_boys_dict[current_boy_IG_name].append(full_file_path)
             # Case 3: Chrome Downloader for Instagram
-            elif "_n" in boy_file_name:
-                raise Exception("Need to implement code for pictures downloaded from Chrome.")
-            # Case 4: Editied Screenshot from phone
-            elif re.search(r"^[0-9]{6,8}_[0-9]{6}$", boy_file_name) is not None and str(
-                    re.search(r"^[0-9]{6,8}_[0-9]{6}$", boy_file_name).group(0)) in boy_file_name:
-                if "Edited Screenshot" not in errors_dict:
-                    errors_dict["Edited Screenshot"] = [full_file_path]
+            elif re.search(r"_[0-9]{8}_[0-9]{15}", boy_file_name) is not None:
+                if "Chrome" not in error_boys_dict:
+                    error_boys_dict["Chrome"] = [full_file_path]
                 else:
-                    errors_dict["Edited Screenshot"].append(full_file_path)
+                    error_boys_dict["Chrome"].append(full_file_path)
+            # Case 4: Editied Screenshot from phone
+            elif re.search(r"^[0-9]{6,8}_[0-9]{6}$", boy_file_name) is not None:
+                if "Edited Screenshot" not in error_boys_dict:
+                    error_boys_dict["Edited Screenshot"] = [full_file_path]
+                else:
+                    error_boys_dict["Edited Screenshot"].append(full_file_path)
+            # Case 5: Twitter
+            elif re.search(r"^IMG_[0-9]{8}_[0-9]{6}", boy_file_name) is not None:
+                if "Twitter" not in error_boys_dict:
+                    error_boys_dict["Twitter"] = [full_file_path]
+                else:
+                    error_boys_dict["Twitter"].append(full_file_path)
+            # Case 6: other screenshot??
+            elif re.search(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}", boy_file_name) is not None:
+                if "screenshot_other" not in error_boys_dict:
+                    error_boys_dict["screenshot_other"] = [full_file_path]
+                else:
+                    error_boys_dict["screenshot_other"].append(full_file_path)
             else:
-                raise Exception("EXCEPTION: Unknown file type!")
+                os.startfile(os.path.dirname(os.path.abspath(current_file)))
+                raise Exception(
+                    str(current_file) + " in directory " + os.path.dirname(
+                        os.path.abspath(current_file)) + " is an unknown file type!")
 
-    if directory_not_empty_at_start:
-        print()
-    print("Done sorting from " + str(in_dir) + " to " + str(out_dir) + ".")
+                if directory_not_empty_at_start:
+                    print()
+                print("Done sorting from " + str(in_dir) + " to " + str(out_dir) + ".")
 
 
 def fix_numbering(dir):
@@ -190,6 +212,8 @@ def fix_numbering(dir):
     files_list = os.listdir(os.getcwd())
     if os.path.isfile(os.path.join(dir, "Thumbs.db")):
         files_list.remove("Thumbs.db")
+    if os.path.isfile(os.path.join(dir, "desktop.ini")):
+        files_list.remove("desktop.ini")
 
     # Compile files_list into boy_names_and_numbers_list_of_lists, we will sort it in a minute
     for current_file in files_list:
@@ -270,8 +294,6 @@ def initialize_data():
 
     with open(photographers_list_file, 'r') as f:
         photographers_list = f.read().splitlines()
-        print("PHOTOGRAPHERS LIST:")
-        print(str(photographers_list))
 
 
 def name_file_to_next_available_name(filename, in_dir, out_dir, boy_irl_name=None):
