@@ -76,8 +76,8 @@ def main():
                 error_directories.append(os.path.dirname(path))
                 os.startfile(os.path.dirname(path))
 
-    os.chdir(os.path.split(__file__)[0])
     if error_boys_dict:
+		os.chdir(os.path.split(__file__)[0])
         proc = subprocess.Popen(boys_dictionary_file, shell=True)
 
 
