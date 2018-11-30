@@ -77,9 +77,8 @@ def main():
                 os.startfile(os.path.dirname(path))
 
     if error_boys_dict:
-		os.chdir(os.path.split(__file__)[0])
+        os.chdir(os.path.split(__file__)[0])
         proc = subprocess.Popen(boys_dictionary_file, shell=True)
-
 
     # Open the Instagram pages for problem accounts
     for ig_name in error_boys_dict:
