@@ -2,6 +2,7 @@ import csv
 import os
 import re
 import webbrowser
+import subprocess
 
 # Directories
 root_picture_directory = "E:\OneDrive\Pictures"
@@ -74,6 +75,11 @@ def main():
             if not os.path.dirname(path) in error_directories:
                 error_directories.append(os.path.dirname(path))
                 os.startfile(os.path.dirname(path))
+
+    os.chdir(os.path.split(__file__)[0])
+    if error_boys_dict:
+        proc = subprocess.Popen(boys_dictionary_file, shell=True)
+
 
     # Open the Instagram pages for problem accounts
     for ig_name in error_boys_dict:
