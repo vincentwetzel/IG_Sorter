@@ -137,8 +137,9 @@ def sort_new_pictures(boys_dict, in_dir, out_dir):
 
                 print("PROBLEM AREA:")
                 print(error_boys_dict["Screenshot"])
+            # Case 2: IG Downloader Android App
             elif "___" in boy_file_name:
-                current_boy_IG_name = re.search(r".+?(?=_[0-9]*_{3,})|.+?(?=_{3,})",
+                current_boy_IG_name = re.search(r".+?(?=_[0-9]*_{3})(?!_{4,})|.+?(?=_{3,})(?!_{4,})",
                                                 boy_file_name).group(0)
 
                 if current_boy_IG_name not in error_boys_dict:
@@ -264,6 +265,7 @@ def handle_special_file(ig_name):
           + "\" in this batch, including:")
     for filename in error_boys_dict[ig_name]:
         print(filename)
+    webbrowser.open("".join(["https://www.instagram.com/", ig_name]))
     user_input = input("\nAre all this pictures of the same boy? (y/n)").lower()
     if user_input == "y" or user_input == "yes":
         boy_irl_name = input("Please enter the boy's name: ")
@@ -274,7 +276,6 @@ def handle_special_file(ig_name):
                                                  subdirectories_dict[os.path.dirname(filename)],
                                                  boy_irl_name)
             error_boys_dict.pop(ig_name)
-
         else:
             print("That didn't work. We'll pass on this for now.")
     else:
