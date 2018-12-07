@@ -53,7 +53,7 @@ def main():
         print_section("PROBLEMS", "-")
         for ig_name in list(error_boys_dict.keys()):
             # Try to handle special file cases
-            if ig_name in photographers_list or ig_name == "Screenshot" or ig_name == "Chrome" or ig_name == "Twitter" or ig_name == "Other":
+            if ig_name in photographers_list or ig_name == "Screenshot" or ig_name == "Twitter" or ig_name == "Other":
                 handle_special_file(ig_name)
 
     # If we cannot figure out ANYTHING about this boy/file, just print the file name.
@@ -83,13 +83,14 @@ def main():
             global boys_dict_file_field_names
             writer = csv.DictWriter(f, fieldnames=boys_dict_file_field_names)
             for key in error_boys_dict:
-                writer.writerow({"Account": key, "Name": ""})
+                if key not in photographers_list:
+                    writer.writerow({"Account": key, "Name": ""})
 
         proc = subprocess.Popen(boys_dictionary_file, shell=True)  # don't forget os.chdir(os.path.split(__file__)[0])
 
     # Open the Instagram pages for problem accounts
     for ig_name in error_boys_dict:
-        if ig_name in photographers_list or ig_name == "Screenshot" or ig_name == "Chrome" or ig_name == "Twitter" or ig_name == "Other":
+        if ig_name in photographers_list or ig_name == "Screenshot" or ig_name == "Twitter" or ig_name == "Other":
             continue
         print(ig_name)
         webbrowser.open("".join(["https://www.instagram.com/", ig_name]))
@@ -139,59 +140,49 @@ def sort_new_pictures(boys_dict, in_dir, out_dir):
             msg = ">>>Could not process: " + str(current_file)
             print(msg)
 
-            # Case 1: Screenshots
-            # If it is a screenshot, put it under the Screenshot key in the dictionary. This will be handled in the final report.
-            if "Screenshot" in boy_file_name:
-                if "Screenshot" in error_boys_dict:
-                    error_boys_dict["Screenshot"].append(full_file_path)
-                else:
-                    error_boys_dict["Screenshot"] = [full_file_path]
-            # Case 2: FastSave Android App
-            elif "___" in boy_file_name:
-                current_boy_IG_name = re.search(r".+?(?=_[0-9]*_{3})(?!_{4,})|.+?(?=_{3,})(?!_{4,})",
-                                                boy_file_name).group(0)
-
-                if current_boy_IG_name not in error_boys_dict:
-                    error_boys_dict[current_boy_IG_name] = [full_file_path]
-                else:
-                    error_boys_dict[current_boy_IG_name].append(full_file_path)
-            # Case 3: Chrome Downloader for Instagram
-            # EXAMPLE: _12345678_123456789012345...
-            elif re.search(r"_[0-9]{8}_[0-9]{15}", boy_file_name) is not None:
-                if "Chrome" not in error_boys_dict:
-                    error_boys_dict["Chrome"] = [full_file_path]
-                else:
-                    error_boys_dict["Chrome"].append(full_file_path)
-            # Case 4: Editied Screenshot from phone
-            # EXAMPLE: 123456(78)_123456...
-            elif re.search(r"^[0-9]{6,8}_[0-9]{6}$", boy_file_name) is not None:
-                if "Edited Screenshot" not in error_boys_dict:
-                    error_boys_dict["Edited Screenshot"] = [full_file_path]
-                else:
-                    error_boys_dict["Edited Screenshot"].append(full_file_path)
-            # Case 5: Twitter
-            # EXAMPLE: IMG_12345678_123456...
-            elif re.search(r"^IMG_[0-9]{8}_[0-9]{6}", boy_file_name) is not None:
-                if "Twitter" not in error_boys_dict:
-                    error_boys_dict["Twitter"] = [full_file_path]
-                else:
-                    error_boys_dict["Twitter"].append(full_file_path)
-            # Case 6: other screenshot??
-            # EXAMPLE: 1234-12-12...
-            elif re.search(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}", boy_file_name) is not None:
-                if "Other" not in error_boys_dict:
-                    error_boys_dict["Other"] = [full_file_path]
-                else:
-                    error_boys_dict["Other"].append(full_file_path)
+            current_boy_IG_name = get_IG_name(boy_file_name)
+            if current_boy_IG_name in error_boys_dict:
+                error_boys_dict[current_boy_IG_name].append(full_file_path)
             else:
-                os.startfile(os.path.dirname(os.path.abspath(current_file)))
-                raise Exception(
-                    str(current_file) + " in directory " + os.path.dirname(
-                        os.path.abspath(current_file)) + " is an unknown file type!")
+                error_boys_dict[current_boy_IG_name] = [full_file_path]
 
     if len(file_paths) > 0:
         print()
     print("Done sorting from " + str(in_dir) + " to " + str(out_dir) + ".")
+
+
+def get_IG_name(full_file_path):
+    basename = os.path.basename(str(full_file_path))
+    # Case 1: Screenshots
+    if "Screenshot" in basename:
+        return "Screenshot"
+    # Case 2: FastSave Android App
+    elif "___" in basename:
+        print("#2!!!!!!!!")
+        return re.search(r".+?(?=_[0-9]*_{3})(?!_{4,})|.+?(?=_{3,})(?!_{4,})",
+                         basename).group(0)
+    # Case 3: Chrome Downloader for Instagram
+    # EXAMPLE: _12345678_123456789012345...
+    elif re.search(r"_[0-9]{8}_[0-9]{15}", basename) is not None:
+        val = re.search(r".+?(?=_[0-9]{8}_[0-9]{15})", basename).group(0)
+        return re.search(r".+?(?=_[0-9]{8}_[0-9]{15})", basename).group(0)
+    # Case 4: Edited Screenshot from phone
+    # EXAMPLE: 123456(78)_123456...
+    elif re.search(r"^[0-9]{6,8}_[0-9]{6}", basename) is not None:
+        return "Edited Screenshot"
+    # Case 5: Twitter
+    # EXAMPLE: IMG_12345678_123456...
+    elif re.search(r"^IMG_[0-9]{8}_[0-9]{6}", basename) is not None:
+        return "Twitter"
+    # Case 6: other screenshot??
+    # EXAMPLE: 1234-12-12...
+    elif re.search(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}", basename) is not None:
+        return "Other"
+    else:
+        os.startfile(os.path.dirname(os.path.abspath(full_file_path)))
+        raise Exception(
+            str(full_file_path) + " in directory " + os.path.dirname(
+                os.path.abspath(full_file_path)) + " is an unknown file type!")
 
 
 def fix_numbering(dir):
@@ -269,25 +260,32 @@ def fix_numbering(dir):
     print("Done fixing numbering in " + str(dir) + ".")
 
 
-def handle_special_file(ig_name):
+def handle_special_file(error_dict_key):
     global error_boys_dict
-    print("We have found " + str(len(error_boys_dict[ig_name]))
-          + " pictures from \"" + ig_name
+    print("We have found " + str(len(error_boys_dict[error_dict_key]))
+          + " pictures from \"" + error_dict_key
           + "\" in this batch, including:")
-    for filename in error_boys_dict[ig_name]:
+    for filename in error_boys_dict[error_dict_key]:
         print(filename)
-    os.startfile(os.path.dirname(error_boys_dict[ig_name][0]))
-    webbrowser.open("".join(["https://www.instagram.com/", ig_name]))
-    user_input = input("\nAre all this pictures of the same boy? (y/n)").lower()
+    try:
+        os.startfile(os.path.dirname(error_boys_dict[error_dict_key][0]))
+    except Exception as e:
+        print(e)
+        raise (
+            "An exception happened in handle_special_file because the file is already open. Please figure out how to catch this exception.")
+
+    name = get_IG_name(error_boys_dict[error_dict_key])
+    webbrowser.open("".join(["https://www.instagram.com/", get_IG_name(error_boys_dict[error_dict_key])]))
+    user_input = input("\nAre all these pictures of the same boy? (y/n)").lower()
     if user_input == "y" or user_input == "yes":
         boy_irl_name = input("Please enter the boy's name: ")
         if boy_irl_name in boys_dict or boy_irl_name in boys_dict.values():
             print("I found him!\n")
-            for filename in error_boys_dict[ig_name]:
+            for filename in error_boys_dict[error_dict_key]:
                 name_file_to_next_available_name(filename, os.path.dirname(filename),
                                                  subdirectories_dict[os.path.dirname(filename)],
                                                  boy_irl_name)
-            error_boys_dict.pop(ig_name)
+            error_boys_dict.pop(error_dict_key)
 
         else:
             print("That didn't work. We'll pass on this for now.")
