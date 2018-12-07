@@ -146,9 +146,9 @@ def sort_new_pictures(boys_dict, in_dir, out_dir):
                     error_boys_dict["Screenshot"].append(full_file_path)
                 else:
                     error_boys_dict["Screenshot"] = [full_file_path]
-            # FastSave Android App
+            # Case 2: FastSave Android App
             elif "___" in boy_file_name:
-                current_boy_IG_name = re.search(r".+?(?=_[0-9]*_{3,})|.+?(?=_{3,})",
+                current_boy_IG_name = re.search(r".+?(?=_[0-9]*_{3})(?!_{4,})|.+?(?=_{3,})(?!_{4,})",
                                                 boy_file_name).group(0)
 
                 if current_boy_IG_name not in error_boys_dict:
