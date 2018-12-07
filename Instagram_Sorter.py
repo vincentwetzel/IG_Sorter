@@ -14,6 +14,7 @@ subdirectories_dict = {
 # Data files
 boys_dictionary_file = "boys.csv"  # You can call this whatever you want.
 boys_dict = dict()  # { "Account":  "irl_name" }
+boys_dict_file_field_names = ["Account", "Name"]  # used by writerow()
 photographers_list_file = "photographers.txt"
 photographers_list = dict()
 
@@ -66,7 +67,7 @@ def main():
     print_section("FINAL REPORT", "*")
     print("NUMBER OF FILES RENAMED: " + str(files_renamed_count))
     print("NUMBER OF NEW FILES SORTED: " + str(new_files_successfully_processed))
-    print("TOTAL ERRORS: " + str(sum(len(v) for v in error_boys_dict.values())) + "\n")
+    print("\nTOTAL ERRORS: " + str(sum(len(v) for v in error_boys_dict.values())) + "\n")
 
     # Open the directories with problem files
     error_directories = list()
@@ -78,7 +79,13 @@ def main():
 
     if error_boys_dict:
         os.chdir(os.path.split(__file__)[0])
-        proc = subprocess.Popen(boys_dictionary_file, shell=True)
+        with open(boys_dictionary_file, 'a', newline="") as f:
+            global boys_dict_file_field_names
+            writer = csv.DictWriter(f, fieldnames=boys_dict_file_field_names)
+            for key in error_boys_dict:
+                writer.writerow({"Account": key, "Name": ""})
+
+        proc = subprocess.Popen(boys_dictionary_file, shell=True)  # don't forget os.chdir(os.path.split(__file__)[0])
 
     # Open the Instagram pages for problem accounts
     for ig_name in error_boys_dict:
@@ -139,9 +146,7 @@ def sort_new_pictures(boys_dict, in_dir, out_dir):
                     error_boys_dict["Screenshot"].append(full_file_path)
                 else:
                     error_boys_dict["Screenshot"] = [full_file_path]
-
-                print("PROBLEM AREA:")
-                print(error_boys_dict["Screenshot"])
+            # FastSave Android App
             elif "___" in boy_file_name:
                 current_boy_IG_name = re.search(r".+?(?=_[0-9]*_{3,})|.+?(?=_{3,})",
                                                 boy_file_name).group(0)
@@ -184,7 +189,9 @@ def sort_new_pictures(boys_dict, in_dir, out_dir):
                     str(current_file) + " in directory " + os.path.dirname(
                         os.path.abspath(current_file)) + " is an unknown file type!")
 
-    print("\nDone sorting from " + str(in_dir) + " to " + str(out_dir) + ".")
+    if len(file_paths) > 0:
+        print()
+    print("Done sorting from " + str(in_dir) + " to " + str(out_dir) + ".")
 
 
 def fix_numbering(dir):
@@ -269,6 +276,8 @@ def handle_special_file(ig_name):
           + "\" in this batch, including:")
     for filename in error_boys_dict[ig_name]:
         print(filename)
+    os.startfile(os.path.dirname(error_boys_dict[ig_name][0]))
+    webbrowser.open("".join(["https://www.instagram.com/", ig_name]))
     user_input = input("\nAre all this pictures of the same boy? (y/n)").lower()
     if user_input == "y" or user_input == "yes":
         boy_irl_name = input("Please enter the boy's name: ")
@@ -300,12 +309,25 @@ def initialize_data():
     # Read CSV file into a dictionary
     with open(boys_dictionary_file, 'r', newline='') as f:
         # NOTE: newline='' means not to leave white lines between entries in the CSV file when writing new entries
-        field_names = ["Account", "Name"]  # used by writerow()
-        reader = csv.DictReader(f, fieldnames=field_names)
+        global boys_dictionary_file_field_names
+        reader = csv.DictReader(f, fieldnames=boys_dict_file_field_names)
         # header = reader.fieldnames  # Advances past header so I can iterate over the dict
         next(reader)  # Skip headers
         for row in reader:
-            boys_dict[row["Account"]] = row["Name"]
+            if row["Name"] == "":
+                if row["Account"] == "":
+                    f.close()
+                    os.startfile(boys_dictionary_file)
+                    raise Exception("There is an empty row in " + str(
+                        boys_dictionary_file) + " at line " + str(reader.line_num) + ". Please fix this.")
+                else:
+                    webbrowser.open("".join(["https://www.instagram.com/", row["Account"]]))
+                    f.close()
+                    os.startfile(boys_dictionary_file)
+                    raise Exception("Account \"" + str(row["Account"]) + "\" has caused an error in " + str(
+                        boys_dictionary_file) + ". All account names MUST have a corresponding IRL name but this one is blank.")
+            else:
+                boys_dict[row["Account"]] = row["Name"]
 
     with open(photographers_list_file, 'r') as f:
         photographers_list = f.read().splitlines()
