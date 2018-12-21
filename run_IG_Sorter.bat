@@ -1,4 +1,4 @@
-cd /D "E:\coding_workspaces\Python\IG_Sorter"
-python ".\Instagram_Sorter.py"
+::cd /D "E:\coding_workspaces\Python\IG_Sorter"
+python "E:\coding_workspaces\Python\IG_Sorter\Instagram_Sorter.py"
 
 pause
