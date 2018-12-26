@@ -4,8 +4,6 @@ import re
 import webbrowser
 import subprocess
 
-# TODO: Figure out a way to add photographers during runtime.
-# TODO: Figure out a way to get a full list of all SORTED files and check to see if they are all in my master dictionary.
 # TODO: Eliminate the need for "NEED TO SORT" folders.
 
 # Directories
