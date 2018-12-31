@@ -64,7 +64,7 @@ def main():
             global boys_dict_file_field_names
             writer = csv.DictWriter(f, fieldnames=boys_dict_file_field_names)
             for error_dir in list(error_boys_dict):
-                for ig_name in error_boys_dict[error_dir]:
+                for ig_name in list(error_boys_dict[error_dir]):
                     if ig_name not in photographers_list and ig_name not in special_cases_types:
                         webbrowser.open("".join(["https://www.instagram.com/", ig_name]))
                         irl_name = input(
@@ -97,7 +97,7 @@ def main():
     if error_boys_dict:
         print_section("ERRORS THAT COULD NOT BE RESOLVED", "*")
         for error_dir in list(error_boys_dict):
-            for ig_name in error_boys_dict[error_dir]:
+            for ig_name in list(error_boys_dict[error_dir]):
                 for filename in error_boys_dict[ig_name]:
                     print(filename)
 
@@ -110,7 +110,7 @@ def main():
     # Open the directories with problem files
     error_directories = list()
     for subdict in list(error_boys_dict):
-        for list_of_paths in subdict.values():
+        for list_of_paths in list(error_boys_dict[subdict]):
             for path in list_of_paths:
                 if not os.path.dirname(path) in error_directories:
                     error_directories.append(os.path.dirname(path))
@@ -119,7 +119,7 @@ def main():
 
     # Open the Instagram pages for problem accounts
     for subdict in list(error_boys_dict):
-        for ig_name in subdict:
+        for ig_name in list(error_boys_dict[subdict]):
             if ig_name in photographers_list or ig_name == "Screenshot" or ig_name == "Twitter" or ig_name == "Other":
                 continue
             print(ig_name)
@@ -148,7 +148,7 @@ def sort_new_pictures(in_dir, out_dir):
             file_paths.append(os.path.abspath(os.path.join(folder, filename)))
 
     # Initialize other variables
-    current_boy_ig_name = ""
+    current_boy_ig_or_irl_name = ""
     current_file_basename = ""
     for full_file_path in file_paths:
         current_file_basename = os.path.basename(full_file_path)
@@ -156,14 +156,26 @@ def sort_new_pictures(in_dir, out_dir):
             continue
 
         # Get the IG Name for the file.
+        # Case 1: The file is named after the boy's first and last name.
+        # EXAMPLE: "John Smith.jpg."
         if current_file_basename.split('.')[0] in boys_dict.values():
-            current_boy_ig_name = current_file_basename.split('.')[0]
+            current_boy_ig_or_irl_name = current_file_basename.split('.')[0]
+        # Case 2: The file is named after the boy's first and last name BUT is more complicated.
+        # EXAMPLE: "John Smith (2).jpg."
+        elif re.search(r".+?(?![^().0-9])", str(current_file_basename.split('.')[0])) is not None and re.search(
+                r".+?(?![^().0-9])", str(current_file_basename.split('.')[0])).group(0).strip() in boys_dict.values():
+            current_boy_ig_or_irl_name = re.search(
+                r".+?(?![^().0-9])", str(current_file_basename.split('.')[0])).group(0).strip()
+        # Case 3: The file is not simply the boy's first and last name.
+        # Use a sorting method to figure out what to do with this file.
         else:
-            current_boy_ig_name = get_IG_name_from_filename(full_file_path)
+            current_boy_ig_or_irl_name = get_IG_name_from_filename(full_file_path)
 
         # Attempt to rename and move the file based on its IG Name.
-        if current_boy_ig_name in boys_dict:
-            name_file_to_next_available_name(full_file_path, out_dir, boys_dict[current_boy_ig_name])
+        if current_boy_ig_or_irl_name in boys_dict:
+            name_file_to_next_available_name(full_file_path, out_dir, boys_dict[current_boy_ig_or_irl_name])
+        elif current_boy_ig_or_irl_name in boys_dict.values():
+            name_file_to_next_available_name(full_file_path, out_dir, current_boy_ig_or_irl_name)
         else:
             # A problem exists with this file. Initiate error handling.
             print(">>>Could not process: " + str(current_file_basename))
@@ -172,10 +184,10 @@ def sort_new_pictures(in_dir, out_dir):
                 error_boys_dict[in_dir] = dict()
 
             # Add the current error to the error_boys_dict
-            if current_boy_ig_name in error_boys_dict[in_dir]:
-                error_boys_dict[in_dir][current_boy_ig_name].append(full_file_path)
+            if current_boy_ig_or_irl_name in error_boys_dict[in_dir]:
+                error_boys_dict[in_dir][current_boy_ig_or_irl_name].append(full_file_path)
             else:
-                error_boys_dict[in_dir][current_boy_ig_name] = [full_file_path]
+                error_boys_dict[in_dir][current_boy_ig_or_irl_name] = [full_file_path]
 
     if len(file_paths) > 0:
         print()
