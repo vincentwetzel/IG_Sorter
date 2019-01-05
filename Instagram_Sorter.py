@@ -91,7 +91,7 @@ def main():
             for ig_name in list(error_boys_dict[error_dir]):
                 # Try to handle special file cases
                 if ig_name not in special_cases_types:
-                    handle_special_account(error_dir, ig_name)
+                    handle_special_account(error_dir, ig_name, False)
 
     # NOW handle any remaining errors that involve photographers.
     if error_boys_dict:
@@ -99,14 +99,14 @@ def main():
         for error_dir in list(error_boys_dict):
             for ig_name in list(error_boys_dict[error_dir]):
                 if ig_name in photographers_list:
-                    handle_special_account(error_dir, ig_name)
+                    handle_special_account(error_dir, ig_name, True)
 
     # If we cannot figure out ANYTHING about this boy/file, just print the file name.
     if error_boys_dict:
         print_section("ERRORS THAT COULD NOT BE RESOLVED", "*")
         for error_dir in list(error_boys_dict):
             for ig_name in list(error_boys_dict[error_dir]):
-                for filename in error_boys_dict[ig_name]:
+                for filename in error_boys_dict[error_dir][ig_name]:
                     print(filename)
 
     # Print a final report
@@ -323,7 +323,7 @@ def fix_numbering(dir_to_renumber):
     print("Done fixing numbering in " + str(dir_to_renumber) + ".")
 
 
-def handle_special_account(error_file_dir, error_ig_name):
+def handle_special_account(error_file_dir, error_ig_name, is_photographer):
     """
     This is an error handling function.
     If the normal sorting fail then we attempt to resolve the problem via user input.
@@ -331,8 +331,12 @@ def handle_special_account(error_file_dir, error_ig_name):
     :param error_file_dir:  The directory of the error file(s).
     :param error_ig_name:   The name of an IG account. There may be MULTIPLE errors associated with a single account.
                             If that is the case then they will be handled as a batch.
+    :param is_photographer: A Boolean value that determines if this is a photographer's account.
+                            If it is, we may have to add a new ig_name to our list to sort the file.
+
     :return:    None
     """
+
     global root_picture_directory
     global error_boys_dict
     global boys_dictionary_file
@@ -362,8 +366,11 @@ def handle_special_account(error_file_dir, error_ig_name):
                 name_file_to_next_available_name(filename, pic_directories_dict[os.path.dirname(filename)],
                                                  boy_irl_name)
             error_boys_dict[error_file_dir].pop(error_ig_name)
-
         else:
+            # TODO: Finish this.
+            # We still can't find the boy, ask the user if they want to add a new account.
+            # If that acount is in our database, handle the file accordingly.
+            # Else, handle the error
             print("That didn't work. We'll pass on this for now.")
     else:
         print("Ok, we will skip this for now.")
