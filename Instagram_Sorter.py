@@ -18,11 +18,11 @@ boys_dictionary_file = "boys.csv"  # You can call this whatever you want.
 boys_dict = dict()  # { "Account":  "irl_name" }
 boys_dict_file_field_names = ["Account", "Name"]  # used by writerow(), MUST be a list
 photographers_list_file = "photographers.txt"
-photographers_list = dict()
+photographers_list = list()
 
 # Error handling
 error_boys_dict = dict()  # { Directory : { IG Name : LIST of full file paths } }
-special_cases_types = ["Screenshot", "Twitter", "Other"]
+special_cases_types = ["Screenshot", "Edited Screenshot", "Twitter", "Other"]
 
 # Counters
 files_renamed_count = 0
@@ -68,13 +68,21 @@ def main():
                     if ig_name not in photographers_list and ig_name not in special_cases_types:
                         webbrowser.open("".join(["https://www.instagram.com/", ig_name]))
                         irl_name = input(
-                            "We have found a new account named \"" + ig_name + "\" that is not in our database. What is the name of this boy?")
-                        writer.writerow({"Account": ig_name,
-                                         "Name": irl_name})
-                        boys_dict[ig_name] = irl_name
-                        for filename in error_boys_dict[error_dir][ig_name]:
-                            name_file_to_next_available_name(filename, pic_directories_dict[error_dir], irl_name)
-                        error_boys_dict[error_dir].pop(ig_name)
+                            "We have found a new account named \""
+                            + ig_name + "\" that is not in our database. Enter the name of this boy "
+                                        "OR type \"p\" if this is a photographer's account:").strip()
+                        if irl_name.lower() == "p":
+                            photographers_list.append(ig_name)
+                            with open(photographers_list_file, 'a') as pf:
+                                pf.write(ig_name)
+                            print("done!")
+                        else:
+                            writer.writerow({"Account": ig_name,
+                                             "Name": irl_name})
+                            boys_dict[ig_name] = irl_name
+                            for filename in error_boys_dict[error_dir][ig_name]:
+                                name_file_to_next_available_name(filename, pic_directories_dict[error_dir], irl_name)
+                            error_boys_dict[error_dir].pop(ig_name)
 
     # Handle all errors that have been found that are NOT photographers
     if error_boys_dict:
@@ -346,7 +354,7 @@ def handle_special_account(error_file_dir, error_ig_name):
     else:
         pics_are_same_boy = "yes"
     if pics_are_same_boy == "y" or pics_are_same_boy == "yes":
-        boy_irl_name = input("Please enter the boy's name: ")  # TODO: Add an "add photographer" option here.
+        boy_irl_name = input("Please enter the boy's name: ").strip()  # TODO: Add an "add photographer" option here???
         if boy_irl_name in boys_dict or boy_irl_name in boys_dict.values():
             print("I found him!\n")
             for filename in error_boys_dict[error_file_dir][error_ig_name]:
