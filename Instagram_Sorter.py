@@ -342,9 +342,14 @@ def handle_special_account(error_file_dir, error_ig_name, is_photographer):
     global boys_dictionary_file
 
     num_special_files = len(error_boys_dict[error_file_dir][error_ig_name])
-    print("\nWe have found " + str(num_special_files)
-          + " pictures from Instagram account \"" + error_ig_name
-          + "\" in this batch, including:")
+    if is_photographer:
+        print("\nWe have found " + str(num_special_files)
+              + " pictures from Instagram photographer \"" + error_ig_name
+              + "\" in this batch, including:")
+    else:
+        print("\nWe have found " + str(num_special_files)
+              + " pictures from Instagram account \"" + error_ig_name
+              + "\" in this batch, including:")
     for filename in error_boys_dict[error_file_dir][error_ig_name]:
         print(filename)
 
