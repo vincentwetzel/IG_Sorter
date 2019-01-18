@@ -5,8 +5,6 @@ import webbrowser
 import subprocess
 
 # TODO: Eliminate the need for "NEED TO SORT" folders.
-# TODO: Check all the startfile() calls and see if they can be changed to... subprocess.Popen(r'explorer /select,"C:\path\of\folder\file"')
-# TODO: Check all global values and see if I can eliminate global calls. The global keyword is only needed when I am modifying a value.
 
 # Directories
 root_picture_directory = os.path.realpath("E:/OneDrive/Pictures")
@@ -39,6 +37,7 @@ def main():
     """
     # Globals
     global boys_dict
+    global boys_dictionary_file
     global error_boys_dict
     global files_renamed_count
     global pic_directories_dict
@@ -63,7 +62,6 @@ def main():
     if error_boys_dict:
         os.chdir(os.path.split(__file__)[0])  # Change to the directory of the script
         with open(boys_dictionary_file, 'a', newline="") as f:
-            boys_dict_file_field_names
             writer = csv.DictWriter(f, fieldnames=boys_dict_file_field_names)
             for error_dir in list(error_boys_dict):
 
@@ -409,8 +407,20 @@ def handle_individual_file(error_file_dir, error_ig_name, full_file_path):
         if len(error_boys_dict[error_file_dir][error_ig_name]) == 0:
             error_boys_dict[error_file_dir].pop(error_ig_name)
     else:
-        print("That didn't work. Please manually figure out what to do with this file.")
-
+        user_input = input("That didn't work. Do you want to track a new IG account? (y/n)")
+        if user_input.lower() == "y" or user_input.lower() == "yes":
+            boy_ig_name = input("Enter this boy's account name: ")
+            boy_irl_name = input("Enter this boy's IRL name: ")
+            os.chdir(os.path.split(__file__)[0])  # Change to the directory of the script
+            with open(boys_dictionary_file, 'a', newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=boys_dict_file_field_names)
+                writer.writerow({"Account": boy_ig_name, "Name": boy_irl_name})
+            boys_dict[boy_ig_name] = boy_irl_name
+            error_boys_dict[error_file_dir][error_ig_name].remove(full_file_path)
+            if len(error_boys_dict[error_file_dir][error_ig_name]) == 0:
+                error_boys_dict[error_file_dir].pop(error_ig_name)
+        else:
+            print("Unable to process this file. Please attempt manual fixes.")
 
 def print_section(section_title, symbol):
     """
