@@ -66,6 +66,11 @@ def main():
             for error_dir in list(error_boys_dict):
 
                 for ig_name in list(error_boys_dict[error_dir]):
+                    # Double check to make sure that the boy has not been added to boys_dict during the operation of this script.
+                    if ig_name in boys_dict:
+                        for filename in error_boys_dict[error_dir][ig_name]:
+                            name_file_to_next_available_name(filename, pic_directories_dict[error_dir], irl_name)
+                        error_boys_dict[error_dir].pop(ig_name)
                     if ig_name not in photographers_list and ig_name not in special_cases_types:
                         webbrowser.open("".join(
                             ["https://www.instagram.com/", ig_name]))  # Open the webpage for the problem file(s)
@@ -202,8 +207,10 @@ def get_IG_name_from_filename(full_file_path):
     :return: None
     """
     basename = os.path.basename(str(full_file_path))
+    print("BASENAME: " + basename)
     # Case 1: Screenshots
-    if "Screenshot" in basename:
+    # EXAMPLE: IMG_0005.png (iPad screenshot)
+    if "Screenshot" in basename or re.search(r"^IMG_[0-9]{4}\.", basename) is not None:
         return "Screenshot"
     # Case 2: FastSave Android App
     elif "___" in basename:
@@ -229,8 +236,7 @@ def get_IG_name_from_filename(full_file_path):
     else:
         proc = subprocess.Popen(os.path.dirname(os.path.abspath(full_file_path)), shell=True)
         raise Exception(
-            str(full_file_path) + " in directory " + str(os.path.dirname(
-                os.path.abspath(full_file_path))) + " is an unknown file type!")
+            str(full_file_path) + " is an unknown file type!")
 
 
 def fix_numbering(dir_to_renumber):
@@ -293,8 +299,8 @@ def fix_numbering(dir_to_renumber):
                         print(">>>NUMBERING PROBLEM WITH FILE: " + str(picture_of_current_boy))
                         new_file_name_and_ext = inner_current_boy_name + " " + str(counter_should_be) + str(
                             pic_file_name_as_list_of_name0_and_ext1[1])
-                        os.rename(dir_to_renumber + "\\" + picture_of_current_boy,
-                                  dir_to_renumber + "\\" + new_file_name_and_ext)
+                        os.rename(os.path.realpath(os.path.join(dir_to_renumber, picture_of_current_boy)),
+                                  os.path.realpath(os.path.join(dir_to_renumber, new_file_name_and_ext)))
                         print("FIXED: " + str(picture_of_current_boy) + " renamed to: " + new_file_name_and_ext)
                         global files_renamed_count
                         files_renamed_count += 1
@@ -421,6 +427,7 @@ def handle_individual_file(error_file_dir, error_ig_name, full_file_path):
                 error_boys_dict[error_file_dir].pop(error_ig_name)
         else:
             print("Unable to process this file. Please attempt manual fixes.")
+
 
 def print_section(section_title, symbol):
     """
