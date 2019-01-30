@@ -207,7 +207,6 @@ def get_IG_name_from_filename(full_file_path):
     :return: None
     """
     basename = os.path.basename(str(full_file_path))
-    print("BASENAME: " + basename)
     # Case 1: Screenshots
     # EXAMPLE: IMG_0005.png (iPad screenshot)
     if "Screenshot" in basename or re.search(r"^IMG_[0-9]{4}\.", basename) is not None:
@@ -359,7 +358,7 @@ def handle_special_account(error_file_dir, error_ig_name, is_photographer):
         # command = "explorer /select, \"" + error_boys_dict[error_file_dir][error_ig_name][0] + "\""
         command = "explorer /select, \"" + error_boys_dict[error_file_dir][error_ig_name][0] + "\""
         subprocess.Popen(command)
-        pics_are_same_boy = input("\nAre all these pictures of the same boy? (y/n)").lower()
+        pics_are_same_boy = input("\nAre all these pictures of the same boy? (y/n)").strip().lower()
     else:
         pics_are_same_boy = "yes"
         # Open the file itself
@@ -404,7 +403,7 @@ def handle_individual_file(error_file_dir, error_ig_name, full_file_path):
     os.startfile(full_file_path)
 
     print("Analyzing file: " + full_file_path)
-    boy_irl_name = input("Last chance. Please enter this boy's name: ")
+    boy_irl_name = input("Last chance. Please enter this boy's name: ").strip()
 
     if boy_irl_name in boys_dict.values():
         name_file_to_next_available_name(full_file_path, pic_directories_dict[os.path.dirname(full_file_path)],
@@ -413,15 +412,18 @@ def handle_individual_file(error_file_dir, error_ig_name, full_file_path):
         if len(error_boys_dict[error_file_dir][error_ig_name]) == 0:
             error_boys_dict[error_file_dir].pop(error_ig_name)
     else:
-        user_input = input("That didn't work. Do you want to track a new IG account? (y/n)")
+        user_input = input("That didn't work. Do you want to track a new IG account? (y/n)").strip()
         if user_input.lower() == "y" or user_input.lower() == "yes":
-            boy_ig_name = input("Enter this boy's account name: ")
-            boy_irl_name = input("Enter this boy's IRL name: ")
+            boy_ig_name = input("Enter this boy's account name: ").strip()
+            user_input = input("You said this boy's name was " + boy_irl_name + ". Is that correct? (y/n)").strip().lower()
+            if user_input != "y" and user_input != "yes":
+                boy_irl_name = input("Please enter this boy's name: ").strip()
             os.chdir(os.path.split(__file__)[0])  # Change to the directory of the script
             with open(boys_dictionary_file, 'a', newline="") as f:
                 writer = csv.DictWriter(f, fieldnames=boys_dict_file_field_names)
                 writer.writerow({"Account": boy_ig_name, "Name": boy_irl_name})
             boys_dict[boy_ig_name] = boy_irl_name
+            name_file_to_next_available_name(full_file_path, pic_directories_dict[error_file_dir], boy_irl_name)
             error_boys_dict[error_file_dir][error_ig_name].remove(full_file_path)
             if len(error_boys_dict[error_file_dir][error_ig_name]) == 0:
                 error_boys_dict[error_file_dir].pop(error_ig_name)
@@ -521,6 +523,7 @@ def name_file_to_next_available_name(full_filename, out_dir, boy_irl_name):
 def print_error_boys_dict():
     """
     A helper method that prints out error_boys_dict.
+    This is NOT used in the ordinary running of the program unless the script is modified to do so.
 
     :return: None
     """
