@@ -12,16 +12,19 @@ pic_directories_dict = {
     os.path.join(root_picture_directory, "NEED TO SORT (NSFW)"): os.path.join(root_picture_directory, "NSFW"),
     os.path.join(root_picture_directory, "NEED TO SORT (MSFW)"): os.path.join(root_picture_directory, "MSFW"),
     os.path.join(root_picture_directory, "NEED TO SORT (SFW)"): os.path.join(root_picture_directory, "SFW")}
+"""{ NEED TO SORT Directory : Output Directory }"""
 
 # Data files
 boys_dictionary_file = os.path.join(os.path.dirname(__file__), "boys.csv")  # You can call this whatever you want.
-boys_dict = dict()  # { "Account":  "irl_name" }
+boys_dict = dict()
+"""{ Account:  irl_name }"""
 boys_dict_file_field_names = ["Account", "Name"]  # used by writerow(), MUST be a list
 photographers_list_file = os.path.join(os.path.dirname(__file__), "photographers.txt")
 photographers_list = list()
 
 # Error handling
-error_boys_dict = dict()  # { Directory : { IG Name : LIST of full file paths } }
+error_boys_dict = dict()
+"""{ Directory : { IG Name : LIST of full file paths } }"""
 special_cases_types = ["Screenshot", "Edited Screenshot", "Twitter", "Other"]
 
 # Counters
@@ -37,12 +40,9 @@ def main():
     """
     # Globals
     global boys_dict
-    global boys_dictionary_file
     global error_boys_dict
     global files_renamed_count
-    global pic_directories_dict
     global photographers_list
-    global special_cases_types
 
     initialize_data()
 
@@ -50,6 +50,10 @@ def main():
     for subdir in pic_directories_dict.values():
         print_section("Checking ordering in " + str(os.path.join(root_picture_directory, subdir)), "-")
         fix_numbering(os.path.join(root_picture_directory, subdir))
+
+    # Check all destination directories to see if all files are correctly named.
+    for subdir in pic_directories_dict.values():
+        find_unknown_boys_in_boys_dict(subdir)
 
     # Prepping done, now sort new pics
     for subdir in pic_directories_dict:
@@ -128,7 +132,7 @@ def main():
     print_section("FINAL REPORT", "*")
     print("NUMBER OF FILES RENAMED: " + str(files_renamed_count))
     print("NUMBER OF NEW FILES SORTED: " + str(new_files_successfully_processed))
-    print("\nTOTAL ERROR ACCOUNTS: " + str(sum(len(v) for v in error_boys_dict.values())) + "\n")
+    print("\nTOTAL ERROR ACCOUNTS REMAINING: " + str(sum(len(v) for v in error_boys_dict.values())) + "\n")
 
 
 def sort_new_pictures(in_dir, out_dir):
@@ -148,9 +152,8 @@ def sort_new_pictures(in_dir, out_dir):
 
     # Find the file paths for all the files in the input folder and add them to a list.
     file_paths = []
-    for folder, subs, files in os.walk(in_dir):
-        for filename in files:
-            file_paths.append(os.path.abspath(os.path.join(folder, filename)))
+    for file in os.listdir(in_dir):
+        file_paths.append(os.path.realpath(os.path.join(in_dir, file)))
 
     # Initialize other variables
     current_boy_ig_or_irl_name = ""
@@ -161,6 +164,7 @@ def sort_new_pictures(in_dir, out_dir):
             continue
 
         # Get the IG Name for the file.
+        # TODO: Shift all this to get_IG_name_from_filename()
         # Case 1: The file is named after the boy's first and last name.
         # EXAMPLE: "John Smith.jpg."
         if current_file_basename.split('.')[0] in boys_dict.values():
@@ -213,7 +217,6 @@ def get_IG_name_from_filename(full_file_path):
         return "Screenshot"
     # Case 2: FastSave Android App
     elif "___" in basename:
-        print("#2!!!!!!!!")
         return re.search(r".+?(?=_[0-9]*_{3})(?!_{4,})|.+?(?=_{3,})(?!_{4,})",
                          basename).group(0)
     # Case 3: Chrome Downloader for Instagram
@@ -316,8 +319,9 @@ def fix_numbering(dir_to_renumber):
         previous_boy_name = current_boy_name
 
     if problems_exist:
-        print()  # Add a whitespace to separate the issues from the "Done" statement
-    print("Done fixing numbering in " + str(dir_to_renumber) + ".")
+        print("\nNo problems exist in " + str(dir_to_renumber) + ".")
+    else:
+        print("Done fixing numbering in " + str(dir_to_renumber) + ".")
 
 
 def handle_special_account(error_file_dir, error_ig_name, is_photographer):
@@ -415,7 +419,8 @@ def handle_individual_file(error_file_dir, error_ig_name, full_file_path):
         user_input = input("That didn't work. Do you want to track a new IG account? (y/n)").strip()
         if user_input.lower() == "y" or user_input.lower() == "yes":
             boy_ig_name = input("Enter this boy's account name: ").strip()
-            user_input = input("You said this boy's name was " + boy_irl_name + ". Is that correct? (y/n)").strip().lower()
+            user_input = input(
+                "You said this boy's name was " + boy_irl_name + ". Is that correct? (y/n)").strip().lower()
             if user_input != "y" and user_input != "yes":
                 boy_irl_name = input("Please enter this boy's name: ").strip()
             os.chdir(os.path.split(__file__)[0])  # Change to the directory of the script
@@ -429,57 +434,6 @@ def handle_individual_file(error_file_dir, error_ig_name, full_file_path):
                 error_boys_dict[error_file_dir].pop(error_ig_name)
         else:
             print("Unable to process this file. Please attempt manual fixes.")
-
-
-def print_section(section_title, symbol):
-    """
-    A helper method to print our output to the console in a pretty fashion
-
-    :param section_title:   The name of the section we are printing.
-    :param symbol:      The symbol to repetetively print to box in our output. This will usually be a '*'.
-    :return:    None
-    """
-    print("\n" + (symbol * 50) + "\n" + section_title + "\n" + (symbol * 50) + "\n")
-
-
-def initialize_data():
-    """
-    This is how we fire up our dictionary and list files that contain all the info on existing files.
-
-    :return:    None
-    """
-    # Import globals
-    global boys_dict
-    global boys_dictionary_file
-    global photographers_list_file
-    global photographers_list
-
-    # Read CSV file into a dictionary
-    os.chdir(os.path.dirname(os.path.realpath(__file__)))
-    with open(boys_dictionary_file, 'r', newline='') as f:
-        # NOTE: newline='' means not to leave white lines between entries in the CSV file when writing new entries
-        global boys_dictionary_file_field_names
-        reader = csv.DictReader(f, fieldnames=boys_dict_file_field_names)
-        # header = reader.fieldnames  # Advances past header so I can iterate over the dict
-        next(reader)  # Skip headers
-        for row in reader:
-            if row["Name"] == "":
-                if row["Account"] == "":
-                    f.close()
-                    proc = subprocess.Popen(boys_dictionary_file)
-                    raise Exception("There is an empty row in " + str(
-                        boys_dictionary_file) + " at line " + str(reader.line_num) + ". Please fix this.")
-                else:
-                    webbrowser.open("".join(["https://www.instagram.com/", row["Account"]]))
-                    f.close()
-                    proc = subprocess.Popen(boys_dictionary_file, shell=True)
-                    raise Exception("Account \"" + str(row["Account"]) + "\" has caused an error in " + str(
-                        boys_dictionary_file) + ". All account names MUST have a corresponding IRL name but this one is blank.")
-            else:
-                boys_dict[row["Account"]] = row["Name"]
-
-    with open(photographers_list_file, 'r') as f:
-        photographers_list = f.read().splitlines()
 
 
 def name_file_to_next_available_name(full_filename, out_dir, boy_irl_name):
@@ -520,6 +474,60 @@ def name_file_to_next_available_name(full_filename, out_dir, boy_irl_name):
     new_files_successfully_processed += 1
 
 
+def initialize_data():
+    """
+    This is how we fire up our dictionary and list files that contain all the info on existing files.
+
+    :return:    None
+    """
+    # Import globals
+    global boys_dict
+    global boys_dictionary_file
+    global photographers_list_file
+    global photographers_list
+
+    # Read CSV file into a dictionary
+    os.chdir(os.path.dirname(os.path.realpath(__file__)))
+    with open(boys_dictionary_file, 'r', newline='') as f:
+        # NOTE: newline='' means not to leave white lines between entries in the CSV file when writing new entries
+        global boys_dictionary_file_field_names
+        reader = csv.DictReader(f, fieldnames=boys_dict_file_field_names)
+        # header = reader.fieldnames  # Advances past header so I can iterate over the dict
+        next(reader)  # Skip headers
+        for row in reader:
+            if row["Name"] == "":
+                f.close()
+                proc = subprocess.Popen(boys_dictionary_file)
+                if row["Account"] == "":
+                    raise Exception("There is an empty row in " + str(
+                        boys_dictionary_file) + " at line " + str(reader.line_num) + ". Please fix this.")
+                else:
+                    webbrowser.open("".join(["https://www.instagram.com/", row["Account"]]))
+                    raise Exception("Account \"" + str(row["Account"]) + "\" has caused an error in " + str(
+                        boys_dictionary_file) + ". All account names MUST have a corresponding IRL name but this one is blank.")
+            else:
+                if row["Account"] == "":
+                    # If we only have the boy's name then he is { John Smith : John Smith }
+                    boys_dict[row["Name"]] = row["Name"]
+                else:
+                    # This is the ideal situation where we have all the needed info
+                    boys_dict[row["Account"]] = row["Name"]
+
+    with open(photographers_list_file, 'r') as f:
+        photographers_list = f.read().splitlines()
+
+
+def print_section(section_title, symbol):
+    """
+    A helper method to print our output to the console in a pretty fashion
+
+    :param section_title:   The name of the section we are printing.
+    :param symbol:      The symbol to repetetively print to box in our output. This will usually be a '*'.
+    :return:    None
+    """
+    print("\n" + (symbol * 50) + "\n" + section_title + "\n" + (symbol * 50) + "\n")
+
+
 def print_error_boys_dict():
     """
     A helper method that prints out error_boys_dict.
@@ -537,6 +545,35 @@ def print_error_boys_dict():
     if not error_boys_dict:
         print("error_boys_dict is empty!")
     input("\nPress Enter to continue the script...")
+
+
+def find_unknown_boys_in_boys_dict(dir):
+    """
+    Finds all the files in a directory that are not in boys_dict
+
+    :param dir: Directory to search in
+    :return: None
+    """
+    # Get a list of all the files in this directory
+    full_file_paths = []
+    for file in os.listdir(dir):
+        full_file_paths.append(os.path.realpath(os.path.join(dir, file)))
+
+    error_boys_list = []
+    for full_file_path in full_file_paths:
+        current_file_basename = os.path.basename(full_file_path)
+        if current_file_basename.lower() == "desktop.ini" or current_file_basename.lower() == "thumbs.db":
+            continue
+
+        boy_name = re.search(r".+?(?=[" "][0-9]+)", current_file_basename).group(0).strip()
+        if boy_name not in boys_dict.values() and boy_name not in error_boys_list:
+            error_boys_list.append(boy_name)
+
+    if error_boys_list:
+        print_section("UNKNOWN BOYS EXIST IN " + str(dir), "*")
+
+    for boy_name in error_boys_list:
+        print(boy_name)
 
 
 if __name__ == '__main__':
