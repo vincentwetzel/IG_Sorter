@@ -219,10 +219,14 @@ def get_IG_name_from_filename(full_file_path):
     elif "___" in basename:
         return re.search(r".+?(?=_[0-9]*_{3})(?!_{4,})|.+?(?=_{3,})(?!_{4,})",
                          basename).group(0)
-    # Case 3: Chrome Downloader for Instagram
-    # EXAMPLE: _12345678_123456789012345...
+    # Case 3.1: Chrome Downloader for Instagram
+    # EXAMPLE: boyname_12345678_123456789012345...
     elif re.search(r"_[0-9]{8}_[0-9]{15}", basename) is not None:
         return re.search(r".+?(?=_[0-9]{8}_[0-9]{15})", basename).group(0)
+    # Case 3.2 Chrome Downloader for Instagram (alternate)
+    # EXAMEPL: boyname_10576075_402670663234919_903188201_n.jpg
+    elif re.search(r"_[0-9]{6,}_[0-9]{15,}_[0-9]{8,}_n", basename) is not None:
+        return re.search(r".+?(?=_[0-9]{6,}_[0-9]{15,}_[0-9]{8,}_n)", basename).group(0)
     # Case 4: Edited Screenshot from phone
     # EXAMPLE: 123456(78)_123456...
     elif re.search(r"^[0-9]{6,8}_[0-9]{6}", basename) is not None:
