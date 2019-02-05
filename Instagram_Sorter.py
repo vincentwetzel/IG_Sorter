@@ -25,7 +25,7 @@ photographers_list = list()
 # Error handling
 error_boys_dict = dict()
 """{ Directory : { IG Name : LIST of full file paths } }"""
-special_cases_types = ["Screenshot", "Edited Screenshot", "Twitter", "Other"]
+special_cases_types = ["Screenshot", "Edited Screenshot", "Twitter", "Other", "Unknown File Type"]
 
 # Counters
 files_renamed_count = 0
@@ -75,6 +75,9 @@ def main():
                         for filename in error_boys_dict[error_dir][ig_name]:
                             name_file_to_next_available_name(filename, pic_directories_dict[error_dir], irl_name)
                         del error_boys_dict[error_dir][ig_name]
+                        if not error_boys_dict[error_dir]:
+                            del error_boys_dict[error_dir]
+
                     if ig_name not in photographers_list and ig_name not in special_cases_types:
                         webbrowser.open("".join(
                             ["https://www.instagram.com/", ig_name]))  # Open the webpage for the problem file(s)
@@ -95,6 +98,8 @@ def main():
                             for filename in error_boys_dict[error_dir][ig_name]:
                                 name_file_to_next_available_name(filename, pic_directories_dict[error_dir], irl_name)
                             del error_boys_dict[error_dir][ig_name]
+                            if not error_boys_dict[error_dir]:
+                                del error_boys_dict[error_dir]
 
     # Handle all errors that have been found that are NOT photographers
     if error_boys_dict:
@@ -127,6 +132,11 @@ def main():
             for ig_name in list(error_boys_dict[error_dir]):
                 for filename in error_boys_dict[error_dir][ig_name]:
                     print(filename)
+
+    # In the normal runtime we should solve all our problems.
+    # If this is not the case then we should debug by printing the error_boys_dict
+    # if error_boys_dict:
+    #    print_error_boys_dict()
 
     # Print a final report
     print_section("FINAL REPORT", "*")
@@ -240,9 +250,7 @@ def get_IG_name_from_filename(full_file_path):
     elif re.search(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}", basename) is not None:
         return "Other"
     else:
-        proc = subprocess.Popen(os.path.dirname(os.path.abspath(full_file_path)), shell=True)
-        raise Exception(
-            str(full_file_path) + " is an unknown file type!")
+        return "Unknown File Type"
 
 
 def fix_numbering(dir_to_renumber):
@@ -328,12 +336,12 @@ def fix_numbering(dir_to_renumber):
         print("Done fixing numbering in " + str(dir_to_renumber) + ".")
 
 
-def handle_special_account(error_file_dir, error_ig_name, is_photographer):
+def handle_special_account(error_dir, error_ig_name, is_photographer):
     """
     This is an error handling function.
     If the normal sorting fail then we attempt to resolve the problem via user input.
 
-    :param error_file_dir:  The directory of the error file(s).
+    :param error_dir:  The directory of the error file(s).
     :param error_ig_name:   The name of an IG account. There may be MULTIPLE errors associated with a single account.
                             If that is the case then they will be handled as a batch.
     :param is_photographer: A Boolean value that determines if this is a photographer's account.
@@ -341,9 +349,10 @@ def handle_special_account(error_file_dir, error_ig_name, is_photographer):
 
     :return:    None
     """
+
     global error_boys_dict
 
-    num_special_files = len(error_boys_dict[error_file_dir][error_ig_name])
+    num_special_files = len(error_boys_dict[error_dir][error_ig_name])
     if is_photographer:
         print("\nWe have found " + str(num_special_files)
               + " pictures from Instagram photographer \"" + error_ig_name
@@ -353,7 +362,7 @@ def handle_special_account(error_file_dir, error_ig_name, is_photographer):
               + " pictures from Instagram account \"" + error_ig_name
               + "\" in this batch, including:")
 
-    for filename in error_boys_dict[error_file_dir][error_ig_name]:
+    for filename in error_boys_dict[error_dir][error_ig_name]:
         print(filename)
 
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
@@ -363,22 +372,25 @@ def handle_special_account(error_file_dir, error_ig_name, is_photographer):
 
     if num_special_files > 1:
         # Open the file's location in file explorer
-        # command = "explorer /select, \"" + error_boys_dict[error_file_dir][error_ig_name][0] + "\""
-        command = "explorer /select, \"" + error_boys_dict[error_file_dir][error_ig_name][0] + "\""
+        # command = "explorer /select, \"" + error_boys_dict[error_dir][error_ig_name][0] + "\""
+        command = "explorer /select, \"" + error_boys_dict[error_dir][error_ig_name][0] + "\""
         subprocess.Popen(command)
         pics_are_same_boy = input("\nAre all these pictures of the same boy? (y/n)").strip().lower()
+
     else:
         pics_are_same_boy = "yes"
         # Open the file itself
-        os.startfile(error_boys_dict[error_file_dir][error_ig_name][0])
+        os.startfile(error_boys_dict[error_dir][error_ig_name][0])
     if pics_are_same_boy == "y" or pics_are_same_boy == "yes":
         boy_irl_name = input("Please enter the boy's name: ").strip()
         if boy_irl_name in boys_dict or boy_irl_name in boys_dict.values():
             print("I found him!\n")
-            for filename in error_boys_dict[error_file_dir][error_ig_name]:
+            for filename in error_boys_dict[error_dir][error_ig_name]:
                 name_file_to_next_available_name(filename, pic_directories_dict[os.path.dirname(filename)],
                                                  boy_irl_name)
-            del error_boys_dict[error_file_dir][error_ig_name]
+            del error_boys_dict[error_dir][error_ig_name]
+            if not error_boys_dict[error_dir]:
+                del error_boys_dict[error_dir]
         else:
             user_input = input("That didn't work. Do you want to track a new IG account? (y/n)").strip()
             if user_input.lower() == "y" or user_input.lower() == "yes":
@@ -394,23 +406,25 @@ def handle_special_account(error_file_dir, error_ig_name, is_photographer):
                 boys_dict[error_ig_name] = boy_irl_name
 
                 # Loop over the problem files associated with this new account and fix them.
-                for file in error_boys_dict[error_file_dir][error_ig_name]:
-                    name_file_to_next_available_name(file, pic_directories_dict[error_file_dir], boy_irl_name)
-                del error_boys_dict[error_file_dir][error_ig_name]
+                for file in error_boys_dict[error_dir][error_ig_name]:
+                    name_file_to_next_available_name(file, pic_directories_dict[error_dir], boy_irl_name)
+                del error_boys_dict[error_dir][error_ig_name]
+                if not error_boys_dict[error_dir]:
+                    del error_boys_dict[error_dir]
             else:
                 print("Ok, we'll skip this account for now.")
     else:
         print("Ok, we will skip this for now.")
 
 
-def handle_individual_file(error_file_dir, error_ig_name, full_file_path):
+def handle_individual_file(error_dir, error_ig_name, full_file_path):
     """
     This function exists if EVERYTHING else has failed and we are giving a file
     one last shot to be identified before we call it quits.
     This usually means that there are multiple pictures from the same source but they are of different boys
     so they must be sorted individually.
 
-    :param error_file_dir:  The directory of the error file.
+    :param error_dir:  The directory of the error file.
     :param error_ig_name:   The name of an IG account.
     :param full_file_path:  The path for the file we are investigating.
     :return:
@@ -430,9 +444,11 @@ def handle_individual_file(error_file_dir, error_ig_name, full_file_path):
     if boy_irl_name in boys_dict.values():
         name_file_to_next_available_name(full_file_path, pic_directories_dict[os.path.dirname(full_file_path)],
                                          boy_irl_name)
-        error_boys_dict[error_file_dir][error_ig_name].remove(full_file_path)
-        if len(error_boys_dict[error_file_dir][error_ig_name]) == 0:
-            del error_boys_dict[error_file_dir][error_ig_name]
+        error_boys_dict[error_dir][error_ig_name].remove(full_file_path)
+        if len(error_boys_dict[error_dir][error_ig_name]) == 0:
+            del error_boys_dict[error_dir][error_ig_name]
+            if not error_boys_dict[error_dir]:
+                del error_boys_dict[error_dir]
     else:
         user_input = input("That didn't work. Do you want to track a new IG account? (y/n)").strip()
         if user_input.lower() == "y" or user_input.lower() == "yes":
@@ -446,10 +462,12 @@ def handle_individual_file(error_file_dir, error_ig_name, full_file_path):
                 writer = csv.DictWriter(f, fieldnames=boys_dict_file_field_names)
                 writer.writerow({"Account": boy_ig_name, "Name": boy_irl_name})
             boys_dict[boy_ig_name] = boy_irl_name
-            name_file_to_next_available_name(full_file_path, pic_directories_dict[error_file_dir], boy_irl_name)
-            error_boys_dict[error_file_dir][error_ig_name].remove(full_file_path)
-            if len(error_boys_dict[error_file_dir][error_ig_name]) == 0:
-                del error_boys_dict[error_file_dir][error_ig_name]
+            name_file_to_next_available_name(full_file_path, pic_directories_dict[error_dir], boy_irl_name)
+            error_boys_dict[error_dir][error_ig_name].remove(full_file_path)
+            if len(error_boys_dict[error_dir][error_ig_name]) == 0:
+                del error_boys_dict[error_dir][error_ig_name]
+                if not error_boys_dict[error_dir]:
+                    del error_boys_dict[error_dir]
         else:
             print("Unable to process this file. Please attempt manual fixes.")
 
