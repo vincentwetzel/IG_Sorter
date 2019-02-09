@@ -25,7 +25,7 @@ photographers_list = list()
 # Error handling
 error_boys_dict = dict()
 """{ Directory : { IG Name : LIST of full file paths } }"""
-special_cases_types = ["Screenshot", "Edited Screenshot", "Twitter", "Other", "Unknown File Type"]
+special_cases_types = ["Ipad Screenshot", "Edited Screenshot", "Twitter", "Other", "Unknown File Type"]
 
 # Counters
 files_renamed_count = 0
@@ -65,7 +65,7 @@ def main():
     # will be skipped during this phase.
     if error_boys_dict:
         os.chdir(os.path.split(__file__)[0])  # Change to the directory of the script
-        with open(boys_dictionary_file, 'a', newline="") as f:
+        with open(boys_dictionary_file, 'a', newline='') as f:
             writer = csv.DictWriter(f, fieldnames=boys_dict_file_field_names)
             for error_dir in list(error_boys_dict):
 
@@ -78,13 +78,13 @@ def main():
                         if not error_boys_dict[error_dir]:
                             del error_boys_dict[error_dir]
 
-                    if ig_name not in photographers_list and ig_name not in special_cases_types:
+                    elif ig_name not in photographers_list and ig_name not in special_cases_types:
                         webbrowser.open("".join(
                             ["https://www.instagram.com/", ig_name]))  # Open the webpage for the problem file(s)
                         os.startfile(os.path.dirname(
                             error_boys_dict[error_dir][ig_name][0]))  # Open the directory with the problem file(s)
                         irl_name = input(
-                            "We have found a new account named \""
+                            "\nWe have found a new account named \""
                             + ig_name + "\" that is not in our database. Enter the name of this boy "
                                         "OR type \"p\" if this is a photographer's account:").strip()
                         if irl_name.lower() == "p":
@@ -197,7 +197,7 @@ def sort_new_pictures(in_dir, out_dir):
             name_file_to_next_available_name(full_file_path, out_dir, current_boy_ig_or_irl_name)
         else:
             # A problem exists with this file. Initiate error handling.
-            print(">>>Could not process: " + str(current_file_basename))
+            print("-Could not process: " + str(current_file_basename))
 
             if in_dir not in error_boys_dict:
                 error_boys_dict[in_dir] = dict()
@@ -223,8 +223,8 @@ def get_IG_name_from_filename(full_file_path):
     basename = os.path.basename(str(full_file_path))
     # Case 1: Screenshots
     # EXAMPLE: IMG_0005.png (iPad screenshot)
-    if "Screenshot" in basename or re.search(r"^IMG_[0-9]{4}\.", basename) is not None:
-        return "Screenshot"
+    if "Ipad Screenshot" in basename or re.search(r"^IMG_[0-9]{4}\.", basename) is not None:
+        return "Ipad Screenshot"
     # Case 2: FastSave Android App
     elif "___" in basename:
         return re.search(r".+?(?=_[0-9]*_{3})(?!_{4,})|.+?(?=_{3,})(?!_{4,})",
@@ -384,7 +384,7 @@ def handle_special_account(error_dir, error_ig_name, is_photographer):
     if pics_are_same_boy == "y" or pics_are_same_boy == "yes":
         boy_irl_name = input("Please enter the boy's name: ").strip()
         if boy_irl_name in boys_dict or boy_irl_name in boys_dict.values():
-            print("I found him!\n")
+            print("I found him in the database!\n")
             for filename in error_boys_dict[error_dir][error_ig_name]:
                 name_file_to_next_available_name(filename, pic_directories_dict[os.path.dirname(filename)],
                                                  boy_irl_name)
@@ -394,7 +394,8 @@ def handle_special_account(error_dir, error_ig_name, is_photographer):
         else:
             user_input = input("That didn't work. Do you want to track a new IG account? (y/n)").strip()
             if user_input.lower() == "y" or user_input.lower() == "yes":
-                boy_irl_name = input("Please enter this boy's name: ").strip()
+                if error_ig_name in special_cases_types:
+                    error_ig_name = input("Enter the name of this boy's IG account:").strip()
 
                 # Write change to boys.csv
                 os.chdir(os.path.split(__file__)[0])
@@ -438,10 +439,11 @@ def handle_individual_file(error_dir, error_ig_name, full_file_path):
     # Open the picture
     os.startfile(full_file_path)
 
-    print("Analyzing file: " + full_file_path)
+    print("\nAnalyzing file: " + full_file_path)
     boy_irl_name = input("Last chance. Please enter this boy's name: ").strip()
 
     if boy_irl_name in boys_dict.values():
+        print("I found him in the database!")
         name_file_to_next_available_name(full_file_path, pic_directories_dict[os.path.dirname(full_file_path)],
                                          boy_irl_name)
         error_boys_dict[error_dir][error_ig_name].remove(full_file_path)
@@ -505,7 +507,7 @@ def name_file_to_next_available_name(full_filename, out_dir, boy_irl_name):
     new_filename_with_ext = new_filename_without_ext + os.path.splitext(full_filename)[1]
 
     os.rename(full_filename, os.path.join(out_dir, new_filename_with_ext))
-    print(str(full_filename) + " successfully sorted to " + out_dir + " as " + new_filename_with_ext)
+    print("+" + str(full_filename) + " successfully sorted to " + out_dir + " as " + new_filename_with_ext)
     global new_files_successfully_processed
     new_files_successfully_processed += 1
 
