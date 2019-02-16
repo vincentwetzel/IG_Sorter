@@ -395,16 +395,16 @@ def handle_special_account(error_dir, error_ig_name, is_photographer):
             user_input = input("That didn't work. Do you want to track a new IG account? (y/n)").strip()
             if user_input.lower() == "y" or user_input.lower() == "yes":
                 if error_ig_name in special_cases_types:
-                    error_ig_name = input("Enter the name of this boy's IG account:").strip()
+                    boy_ig_name = input("Enter the name of this boy's IG account:").strip()
 
                 # Write change to boys.csv
                 os.chdir(os.path.split(__file__)[0])
                 with open(boys_dictionary_file, 'a', newline="") as file:
                     writer = csv.DictWriter(file, fieldnames=boys_dict_file_field_names)
-                    writer.writerow({"Account": error_ig_name, "Name": boy_irl_name})
+                    writer.writerow({"Account": boy_ig_name, "Name": boy_irl_name})
 
                 # Update boys_dict
-                boys_dict[error_ig_name] = boy_irl_name
+                boys_dict[boy_ig_name] = boy_irl_name
 
                 # Loop over the problem files associated with this new account and fix them.
                 for file in error_boys_dict[error_dir][error_ig_name]:
