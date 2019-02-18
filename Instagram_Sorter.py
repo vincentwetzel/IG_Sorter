@@ -118,6 +118,7 @@ def main():
                 if ig_name in photographers_list:
                     handle_special_account(error_dir, ig_name, True)
 
+    # LAST CHANCE, handle each remaining error file individually.
     if error_boys_dict:
         print_section("Handling error files individually", "-")
         for error_dir in list(error_boys_dict):
@@ -366,9 +367,6 @@ def handle_special_account(error_dir, error_ig_name, is_photographer):
         print(filename)
 
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
-    # Open the Instagram's page in web browser
-    if error_ig_name not in special_cases_types:
-        webbrowser.open("".join(["https://www.instagram.com/", error_ig_name]))
 
     if num_special_files > 1:
         # Open the file's location in file explorer
@@ -376,12 +374,16 @@ def handle_special_account(error_dir, error_ig_name, is_photographer):
         command = "explorer /select, \"" + error_boys_dict[error_dir][error_ig_name][0] + "\""
         subprocess.Popen(command)
         pics_are_same_boy = input("\nAre all these pictures of the same boy? (y/n)").strip().lower()
-
     else:
         pics_are_same_boy = "yes"
         # Open the file itself
         os.startfile(error_boys_dict[error_dir][error_ig_name][0])
+
     if pics_are_same_boy == "y" or pics_are_same_boy == "yes":
+        # Open the Instagram's page in web browser
+        if error_ig_name not in special_cases_types:
+            webbrowser.open("".join(["https://www.instagram.com/", error_ig_name]))
+
         boy_irl_name = input("Please enter the boy's name: ").strip()
         if boy_irl_name in boys_dict or boy_irl_name in boys_dict.values():
             print("I found him in the database!\n")
@@ -394,8 +396,7 @@ def handle_special_account(error_dir, error_ig_name, is_photographer):
         else:
             user_input = input("That didn't work. Do you want to track a new IG account? (y/n)").strip()
             if user_input.lower() == "y" or user_input.lower() == "yes":
-                if error_ig_name in special_cases_types:
-                    boy_ig_name = input("Enter the name of this boy's IG account:").strip()
+                boy_ig_name = input("Enter the name of this boy's IG account:").strip()
 
                 # Write change to boys.csv
                 os.chdir(os.path.split(__file__)[0])
@@ -415,7 +416,7 @@ def handle_special_account(error_dir, error_ig_name, is_photographer):
             else:
                 print("Ok, we'll skip this account for now.")
     else:
-        print("Ok, we will skip this for now.")
+        print("Ok, we'll handle these files individually later.")
 
 
 def handle_individual_file(error_dir, error_ig_name, full_file_path):
