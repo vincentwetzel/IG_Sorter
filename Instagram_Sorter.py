@@ -38,7 +38,7 @@ def main():
 
     :return:    None
     """
-    # Globals
+    # Gather globals
     global boys_dict
     global error_boys_dict
     global files_renamed_count
@@ -79,18 +79,21 @@ def main():
                             del error_boys_dict[error_dir]
 
                     elif ig_name not in photographers_list and ig_name not in special_cases_types:
-                        webbrowser.open("".join(
-                            ["https://www.instagram.com/", ig_name]))  # Open the webpage for the problem file(s)
-                        os.startfile(os.path.dirname(
-                            error_boys_dict[error_dir][ig_name][0]))  # Open the directory with the problem file(s)
+                        # Open the webpage for the problem file(s)
+                        webbrowser.open("".join(["https://www.instagram.com/", ig_name]))
+
+                        # Open the directory with the problem file(s)
+                        os.startfile(os.path.dirname(error_boys_dict[error_dir][ig_name][0]))
                         irl_name = input(
                             "\nWe have found a new account named \""
                             + ig_name + "\" that is not in our database. Enter the name of this boy "
                                         "OR type \"p\" if this is a photographer's account:").strip()
+                        # Handle photographers
                         if irl_name.lower() == "p":
                             photographers_list.append(ig_name)
                             with open(photographers_list_file, 'a') as pf:
                                 pf.write(ig_name + "\n")
+                        # Handle new account names
                         else:
                             writer.writerow({"Account": ig_name,
                                              "Name": irl_name})
@@ -176,6 +179,7 @@ def sort_new_pictures(in_dir, out_dir):
 
         # Get the IG Name for the file.
         # TODO: Shift all this to get_IG_name_from_filename()
+        # TODO: This applies to all 3 cases. Convert the first 2
         # Case 1: The file is named after the boy's first and last name.
         # EXAMPLE: "John Smith.jpg."
         if current_file_basename.split('.')[0] in boys_dict.values():
@@ -195,6 +199,7 @@ def sort_new_pictures(in_dir, out_dir):
         if current_boy_ig_or_irl_name in boys_dict:
             name_file_to_next_available_name(full_file_path, out_dir, boys_dict[current_boy_ig_or_irl_name])
         elif current_boy_ig_or_irl_name in boys_dict.values():
+            # TODO: Do I need this?
             name_file_to_next_available_name(full_file_path, out_dir, current_boy_ig_or_irl_name)
         else:
             # A problem exists with this file. Initiate error handling.
@@ -219,7 +224,7 @@ def get_IG_name_from_filename(full_file_path):
     This is a helper method to attempt to rename a file based off of the name that it originally had when it was downloaded.
 
     :param full_file_path: The path to the file that we want the IG name from.
-    :return: None
+    :return: The IG name of the boy associated with this file.
     """
     basename = os.path.basename(str(full_file_path))
     # Case 1: Screenshots
