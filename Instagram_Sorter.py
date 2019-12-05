@@ -1,3 +1,5 @@
+#! /usr/bin/env python3
+
 import csv
 import os
 import re
@@ -61,8 +63,6 @@ def main():
         sort_new_pictures(subdir, pic_directories_dict[subdir])
 
     # If any of the files failed to sort, begin error handling.
-    # Files that are associated with a known photographer account or are a special type (e.g. Twitter pics)
-    # will be skipped during this phase.
     if error_dict:
         os.chdir(os.path.split(__file__)[0])  # Change to the directory of the script
         with open(ig_database_file, 'a', newline='') as f:
@@ -87,9 +87,9 @@ def main():
                         irl_name = input(
                             "\nWe have found a new account named \""
                             + ig_name + "\" that is not in our database. Enter the name of this boy "
-                                        "OR type \"p\" if this is a photographer's account:").strip()
+                                        "OR type \"p\" if this is a photographer's account:").Dstrip()
                         # Handle photographers
-                        if irl_name.lower() == "p":
+                        if irl_name == "p":
                             photographers_list.append(ig_name)
                             with open(photographers_list_file, 'a') as pf:
                                 pf.write(ig_name + "\n")
