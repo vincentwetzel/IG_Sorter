@@ -18,7 +18,7 @@ pic_directories_dict = {
 """{ NEED TO SORT Directory : Output Directory }"""
 
 # Data files
-ig_database_file = os.path.join(os.path.dirname(__file__), "boys.csv")  # You can call this whatever you want.
+ig_database_file = os.path.join(os.path.dirname(__file__), "ig_boys.csv")  # You can call this whatever you want.
 boys_dict = dict()
 """{ Account:  irl_name }"""
 ig_database_file_fieldnames = ["Account", "Name"]  # used by writerow(), MUST be a list
@@ -87,7 +87,7 @@ def main():
                         irl_name = input(
                             "\nWe have found a new account named \""
                             + ig_name + "\" that is not in our database. Enter the name of this boy "
-                                        "OR type \"p\" if this is a photographer's account:").Dstrip()
+                                        "OR type \"p\" if this is a photographer's account:").strip()
                         # Handle photographers
                         if irl_name == "p":
                             photographers_list.append(ig_name)
@@ -398,7 +398,7 @@ def handle_special_account(error_dir, error_ig_name, is_photographer):
             if user_input.lower() == "y" or user_input.lower() == "yes":
                 boy_ig_name = input("Enter the name of this boy's IG account:").strip()
 
-                # Write change to boys.csv
+                # Write change to ig_boys.csv
                 os.chdir(os.path.split(__file__)[0])
                 with open(ig_database_file, 'a', newline="") as file:
                     writer = csv.DictWriter(file, fieldnames=ig_database_file_fieldnames)
