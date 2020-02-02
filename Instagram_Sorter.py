@@ -1,5 +1,7 @@
 #! /usr/bin/env python3
 
+import logging
+import sys
 import csv
 import os
 import re
@@ -7,7 +9,9 @@ import webbrowser
 import subprocess
 from collections import defaultdict
 
-# TODO: Eliminate the need for "NEED TO SORT" folders.
+# NOTE TO USER: use logging.DEBUG for testing, logging.CRITICAL for runtime
+logging.basicConfig(stream=sys.stderr,
+                    level=logging.DEBUG)
 
 # Directories
 root_picture_directory = os.path.realpath("E:/OneDrive/Pictures")
@@ -18,15 +22,22 @@ pic_directories_dict = {
 """{ NEED TO SORT Directory : Output Directory }"""
 
 # Data files
-ig_database_file = os.path.join(os.path.dirname(__file__), "ig_boys.csv")  # You can call this whatever you want.
+ig_database_file = os.path.join(os.path.dirname(__file__), "ig_boys.csv")
+"""The database file that contains pairs of Instagram accounts and the users's IRL names"""
+
 boys_dict = dict()
 """{ Account:  irl_name }"""
-ig_database_file_fieldnames = ["Account", "Name"]  # used by writerow(), MUST be a list
+
+ig_database_file_fieldnames = ["Account", "Name"]
+"""These fieldnames are used by writerow() to add info to the CSV file"""
+
 photographers_list_file = os.path.join(os.path.dirname(__file__), "photographers.txt")
+"""A file that stores Instagram accounts associated with photographers"""
 photographers_list = list()
+"""A list of known photographers compiled from photographers_list_file"""
 
 # Error handling
-error_dict = dict() # TODO: Convert this to a defaultdict?
+error_dict = dict()  # TODO: Convert this to a defaultdict?
 """{ Directory : { IG Name : LIST of full file paths } }"""
 special_cases_types = ["Ipad Screenshot", "Edited Screenshot", "Twitter", "Other", "Unknown File Type"]
 
@@ -135,7 +146,7 @@ def main():
         for error_dir in list(error_dict):
             for ig_name in list(error_dict[error_dir]):
                 for filename in error_dict[error_dir][ig_name]:
-                    print(filename)
+                    logging.debug(filename)
 
     # In the normal runtime we should solve all our problems.
     # If this is not the case then we should debug by printing the error_boys_dict
@@ -144,9 +155,9 @@ def main():
 
     # Print a final report
     print_section("FINAL REPORT", "*")
-    print("NUMBER OF FILES RENAMED: " + str(files_renamed_count))
-    print("NUMBER OF NEW FILES SORTED: " + str(new_files_successfully_processed))
-    print("\nTOTAL ERROR ACCOUNTS REMAINING: " + str(sum(len(v) for v in error_dict.values())) + "\n")
+    logging.debug("NUMBER OF FILES RENAMED: " + str(files_renamed_count))
+    logging.debug("NUMBER OF NEW FILES SORTED: " + str(new_files_successfully_processed))
+    logging.debug("\nTOTAL ERROR ACCOUNTS REMAINING: " + str(sum(len(v) for v in error_dict.values())) + "\n")
 
 
 def sort_new_pictures(in_dir, out_dir):
@@ -203,15 +214,15 @@ def sort_new_pictures(in_dir, out_dir):
             name_file_to_next_available_name(full_file_path, out_dir, current_boy_ig_or_irl_name)
         else:
             # A problem exists with this file. Initiate error handling.
-            print("-Could not process: " + str(current_file_basename))
+            logging.debug("-Could not process: " + str(current_file_basename))
 
             if in_dir not in error_dict:
                 error_dict[in_dir] = defaultdict(list)
             error_dict[in_dir][current_boy_ig_or_irl_name].append(full_file_path)
 
     if len(infile_list) > 0:
-        print()
-    print("Done sorting from " + str(in_dir) + " to " + str(out_dir) + ".")
+        logging.debug("\n")
+    logging.debug("Done sorting from " + str(in_dir) + " to " + str(out_dir) + ".")
 
 
 def get_IG_name_from_filename(full_file_path):
@@ -311,12 +322,12 @@ def fix_numbering(dir_to_renumber):
 
                     if inner_current_pic_counter != counter_should_be:
                         problems_exist = True
-                        print(">>>NUMBERING PROBLEM WITH FILE: " + str(picture_of_current_boy))
+                        logging.debug(">>>NUMBERING PROBLEM WITH FILE: " + str(picture_of_current_boy))
                         new_file_name_and_ext = inner_current_boy_name + " " + str(counter_should_be) + str(
                             pic_file_name_as_list_of_name0_and_ext1[1])
                         os.rename(os.path.realpath(os.path.join(dir_to_renumber, picture_of_current_boy)),
                                   os.path.realpath(os.path.join(dir_to_renumber, new_file_name_and_ext)))
-                        print("FIXED: " + str(picture_of_current_boy) + " renamed to: " + new_file_name_and_ext)
+                        logging.debug("FIXED: " + str(picture_of_current_boy) + " renamed to: " + new_file_name_and_ext)
                         global files_renamed_count
                         files_renamed_count += 1
 
@@ -332,9 +343,9 @@ def fix_numbering(dir_to_renumber):
         previous_boy_name = current_boy_name
 
     if problems_exist:
-        print("Done fixing numbering in " + str(dir_to_renumber) + ".")
+        logging.debug("Done fixing numbering in " + str(dir_to_renumber) + ".")
     else:
-        print("\nNo problems exist in " + str(dir_to_renumber) + ".")
+        logging.debug("\nNo problems exist in " + str(dir_to_renumber) + ".")
 
 
 def handle_special_account(error_dir, error_ig_name, is_photographer):
@@ -355,16 +366,16 @@ def handle_special_account(error_dir, error_ig_name, is_photographer):
 
     num_special_files = len(error_dict[error_dir][error_ig_name])
     if is_photographer:
-        print("\nWe have found " + str(num_special_files)
-              + " pictures from Instagram photographer \"" + error_ig_name
-              + "\" in this batch, including:")
+        logging.debug("\nWe have found " + str(num_special_files)
+                      + " pictures from Instagram photographer \"" + error_ig_name
+                      + "\" in this batch, including:")
     else:
-        print("\nWe have found " + str(num_special_files)
-              + " pictures from Instagram account \"" + error_ig_name
-              + "\" in this batch, including:")
+        logging.debug("\nWe have found " + str(num_special_files)
+                      + " pictures from Instagram account \"" + error_ig_name
+                      + "\" in this batch, including:")
 
     for filename in error_dict[error_dir][error_ig_name]:
-        print(filename)
+        logging.debug(filename)
 
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
 
@@ -386,7 +397,7 @@ def handle_special_account(error_dir, error_ig_name, is_photographer):
 
         boy_irl_name = input("Please enter the boy's name: ").strip()
         if boy_irl_name in boys_dict or boy_irl_name in boys_dict.values():
-            print("I found him in the database!\n")
+            logging.debug("I found him in the database!\n")
             for filename in error_dict[error_dir][error_ig_name]:
                 name_file_to_next_available_name(filename, pic_directories_dict[os.path.dirname(filename)],
                                                  boy_irl_name)
@@ -414,9 +425,9 @@ def handle_special_account(error_dir, error_ig_name, is_photographer):
                 if not error_dict[error_dir]:
                     del error_dict[error_dir]
             else:
-                print("Ok, we'll skip this account for now.")
+                logging.debug("Ok, we'll skip this account for now.")
     else:
-        print("Ok, we'll handle these files individually later.")
+        logging.debug("Ok, we'll handle these files individually later.")
 
 
 def handle_individual_file(error_dir, error_ig_name, full_file_path):
@@ -440,15 +451,15 @@ def handle_individual_file(error_dir, error_ig_name, full_file_path):
     # Open the picture
     os.startfile(full_file_path)
 
-    print("\nAnalyzing file: " + full_file_path)
+    logging.debug("\nAnalyzing file: " + full_file_path)
     boy_irl_name = input("Last chance. Please enter this boy's name: ").strip()
 
     if boy_irl_name in boys_dict.values():
-        print("I found him in the database!")
+        logging.debug("I found " + boy_irl_name + " in the database!")
         name_file_to_next_available_name(full_file_path, pic_directories_dict[os.path.dirname(full_file_path)],
                                          boy_irl_name)
         error_dict[error_dir][error_ig_name].remove(full_file_path)
-        if len(error_dict[error_dir][error_ig_name]) == 0:
+        if logging.debug(error_dict[error_dir][error_ig_name]) == 0:
             del error_dict[error_dir][error_ig_name]
             if not error_dict[error_dir]:
                 del error_dict[error_dir]
@@ -472,7 +483,7 @@ def handle_individual_file(error_dir, error_ig_name, full_file_path):
                 if not error_dict[error_dir]:
                     del error_dict[error_dir]
         else:
-            print("Unable to process this file. Please attempt manual fixes.")
+            logging.debug("Unable to process this file. Please attempt manual fixes.")
 
 
 def name_file_to_next_available_name(full_filename, out_dir, boy_irl_name):
@@ -508,7 +519,7 @@ def name_file_to_next_available_name(full_filename, out_dir, boy_irl_name):
     new_filename_with_ext = new_filename_without_ext + os.path.splitext(full_filename)[1]
 
     os.rename(full_filename, os.path.join(out_dir, new_filename_with_ext))
-    print("+" + str(full_filename) + " successfully sorted to " + out_dir + " as " + new_filename_with_ext)
+    logging.debug("+" + str(full_filename) + " successfully sorted to " + out_dir + " as " + new_filename_with_ext)
     global new_files_successfully_processed
     new_files_successfully_processed += 1
 
@@ -564,7 +575,7 @@ def print_section(section_title, symbol):
     :param symbol:      The symbol to repetetively print to box in our output. This will usually be a '*'.
     :return:    None
     """
-    print("\n" + (symbol * 50) + "\n" + section_title + "\n" + (symbol * 50) + "\n")
+    logging.debug("\n" + (symbol * 50) + "\n" + section_title + "\n" + (symbol * 50) + "\n")
 
 
 def print_error_boys_dict():
@@ -576,13 +587,13 @@ def print_error_boys_dict():
     """
     global error_dict
     for error_dir in error_dict:
-        print("KEY (error_dir): " + str(error_dir))
+        logging.debug("KEY (error_dir): " + str(error_dir))
         for ig_name in error_dict[error_dir]:
-            print("\tIG NAME: " + ig_name)
+            logging.debug("\tIG NAME: " + ig_name)
             for fname in error_dict[error_dir][ig_name]:
-                print("\t\tFILE: " + fname)
+                logging.debug("\t\tFILE: " + fname)
     if not error_dict:
-        print("error_boys_dict is empty!")
+        logging.debug("error_boys_dict is empty!")
     input("\nPress Enter to continue the script...")
 
 
@@ -612,7 +623,7 @@ def find_unknown_boys_in_boys_dict(dir):
         print_section("UNKNOWN BOYS EXIST IN " + str(dir), "*")
 
     for boy_name in error_boys_list:
-        print(boy_name)
+        logging.debug(boy_name)
 
 
 if __name__ == '__main__':
