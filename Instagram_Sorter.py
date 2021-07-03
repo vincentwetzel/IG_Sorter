@@ -13,6 +13,9 @@ import pandas
 from collections import defaultdict
 from typing import Dict, Union, List
 
+import instaloader
+from pypref import Preferences
+
 # NOTE TO USER: use logging.DEBUG for testing, logging.CRITICAL for runtime
 logging.basicConfig(stream=sys.stderr,
                     level=logging.DEBUG)
@@ -36,7 +39,7 @@ ig_db_file_fieldnames: List[str] = ["Account", "Name"]
 """These fieldnames are used by writerow() to add info to the Spreadsheet file"""
 
 PHOTOGRAPHERS_DB_FILE: str = os.path.join(os.path.dirname(__file__),
-                                            "photographers.txt")
+                                          "photographers.txt")
 """A file that stores Instagram accounts associated with photographers"""
 photographers_list: List[str] = list()
 """A list of known photographers compiled from PHOTOGRAPHERS_DB_FILE"""
@@ -74,7 +77,7 @@ def main():
     for subdir in pic_directories_dict.values():
         find_unknown_boys_in_boys_dict(subdir)
 
-    # Prepping done, now sort new pics
+    # Begin sorting new pics
     for subdir in pic_directories_dict:
         print_section("Sorting new pics in " + str(os.path.join(ROOT_PICTURE_DIR, subdir)), "-")
         sort_new_pictures(subdir, pic_directories_dict[subdir])
@@ -348,7 +351,8 @@ def fix_numbering(dir_to_renumber):
                             pic_file_name_as_list_of_name0_and_ext1[1])
                         os.rename(os.path.realpath(os.path.join(dir_to_renumber, picture_of_current_boy)),
                                   os.path.realpath(os.path.join(dir_to_renumber, new_file_name_and_ext)))
-                        logging.info("\tFIXED: " + str(picture_of_current_boy) + " renamed to: " + new_file_name_and_ext)
+                        logging.info(
+                            "\tFIXED: " + str(picture_of_current_boy) + " renamed to: " + new_file_name_and_ext)
                         global files_renamed_count
                         files_renamed_count += 1
 
