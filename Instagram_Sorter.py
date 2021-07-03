@@ -1,5 +1,7 @@
 #! /usr/bin/env python3
 
+# TODO: Write new IG accounts to xlsx during runtime, not at the end of iterating through the error dict.
+
 import logging
 import sys
 import csv
@@ -7,43 +9,46 @@ import os
 import re
 import webbrowser
 import subprocess
+import pandas
 from collections import defaultdict
+from typing import Dict, Union, List
 
 # NOTE TO USER: use logging.DEBUG for testing, logging.CRITICAL for runtime
 logging.basicConfig(stream=sys.stderr,
                     level=logging.DEBUG)
 
 # Directories
-root_picture_directory = os.path.realpath("E:/OneDrive/Pictures")
-pic_directories_dict = {
-    os.path.join(root_picture_directory, "NEED TO SORT (NSFW)"): os.path.join(root_picture_directory, "NSFW"),
-    os.path.join(root_picture_directory, "NEED TO SORT (MSFW)"): os.path.join(root_picture_directory, "MSFW"),
-    os.path.join(root_picture_directory, "NEED TO SORT (SFW)"): os.path.join(root_picture_directory, "SFW")}
-"""{ NEED TO SORT Directory : Output Directory }"""
+ROOT_PICTURE_DIR = os.path.realpath("E:/OneDrive/Pictures")
+pic_directories_dict: [str, str] = {
+    os.path.join(ROOT_PICTURE_DIR, "NEED TO SORT (NSFW)"): os.path.join(ROOT_PICTURE_DIR, "NSFW"),
+    os.path.join(ROOT_PICTURE_DIR, "NEED TO SORT (MSFW)"): os.path.join(ROOT_PICTURE_DIR, "MSFW"),
+    os.path.join(ROOT_PICTURE_DIR, "NEED TO SORT (SFW)"): os.path.join(ROOT_PICTURE_DIR, "SFW")}
+"""{ NEED_TO_SORT Directory : Output Directory }"""
 
 # Data files
-ig_database_file = os.path.join(os.path.dirname(__file__), "ig_boys.csv")
+IG_DB_FILE = os.path.join(os.path.dirname(__file__), "ig_boys.xlsx")
 """The database file that contains pairs of Instagram accounts and the users's IRL names"""
 
-boys_dict = dict()
+boys_dict: Dict[str, str] = dict()
 """{ Account:  irl_name }"""
 
-ig_database_file_fieldnames = ["Account", "Name"]
-"""These fieldnames are used by writerow() to add info to the CSV file"""
+ig_db_file_fieldnames: List[str] = ["Account", "Name"]
+"""These fieldnames are used by writerow() to add info to the Spreadsheet file"""
 
-photographers_list_file = os.path.join(os.path.dirname(__file__), "photographers.txt")
+PHOTOGRAPHERS_DB_FILE: str = os.path.join(os.path.dirname(__file__),
+                                            "photographers.txt")
 """A file that stores Instagram accounts associated with photographers"""
-photographers_list = list()
-"""A list of known photographers compiled from photographers_list_file"""
+photographers_list: List[str] = list()
+"""A list of known photographers compiled from PHOTOGRAPHERS_DB_FILE"""
 
 # Error handling
-error_dict = dict()  # TODO: Convert this to a defaultdict?
+error_dict: Dict[str, Dict[str, List[str]]] = dict()  # TODO: Convert this to a defaultdict?
 """{ Directory : { IG Name : LIST of full file paths } }"""
-special_cases_types = ["Ipad Screenshot", "Edited Screenshot", "Twitter", "Other", "Unknown File Type"]
+special_cases_types = ("Ipad Screenshot", "Edited Screenshot", "Twitter", "Other", "Unknown File Type")
 
 # Counters
-files_renamed_count = 0
-new_files_successfully_processed = 0
+files_renamed_count: int = 0
+new_files_successfully_processed: int = 0
 
 
 def main():
@@ -56,13 +61,14 @@ def main():
     global error_dict
     global files_renamed_count
     global photographers_list
+    global IG_DB_FILE
 
     init_data()
 
     # Check ordering of existing sorted files.
     for subdir in pic_directories_dict.values():
-        print_section("Checking ordering in " + str(os.path.join(root_picture_directory, subdir)), "-")
-        fix_numbering(os.path.join(root_picture_directory, subdir))
+        print_section("Checking ordering in " + str(os.path.join(ROOT_PICTURE_DIR, subdir)), "-")
+        fix_numbering(os.path.join(ROOT_PICTURE_DIR, subdir))
 
     # Check all destination directories to see if all files are correctly named.
     for subdir in pic_directories_dict.values():
@@ -70,50 +76,57 @@ def main():
 
     # Prepping done, now sort new pics
     for subdir in pic_directories_dict:
-        print_section("Sorting new pics in " + str(os.path.join(root_picture_directory, subdir)), "-")
+        print_section("Sorting new pics in " + str(os.path.join(ROOT_PICTURE_DIR, subdir)), "-")
         sort_new_pictures(subdir, pic_directories_dict[subdir])
 
     # If any of the files failed to sort, begin error handling.
     if error_dict:
-        os.chdir(os.path.split(__file__)[0])  # Change to the directory of the script
-        with open(ig_database_file, 'a', newline='') as f:
-            writer = csv.DictWriter(f, fieldnames=ig_database_file_fieldnames)
-            for error_dir in list(error_dict):
+        logging.debug(print_section("ERROR DICTIONARY"))
+        for dir in error_dict:
+            logging.debug("\tDIRECTORY:" + dir)
+            for ig_name in error_dict[dir]:
+                logging.debug("\t\tInstagram Account: " + ig_name)
+                # logging.debug("\t\t\tFILE LIST: " + str([os.path.basename(x) for x in error_dict[dir][ig_name]]))
 
-                for ig_name in list(error_dict[error_dir]):
-                    # Double check to make sure that the boy has not been added to boys_dict during the operation of this script.
-                    if ig_name in boys_dict:
+        os.chdir(os.path.split(__file__)[0])  # Change to the directory of the script
+        # TODO: Fix this broken section of code!!!
+        for error_dir in list(error_dict):
+            for ig_name in list(error_dict[error_dir]):
+                # Double check to make sure that the boy has not been added to boys_dict during the operation of this script.
+                if ig_name in boys_dict:
+                    for filename in error_dict[error_dir][ig_name]:
+                        name_file_to_next_available_name(filename, pic_directories_dict[error_dir], irl_name)
+                    del error_dict[error_dir][ig_name]
+                    if not error_dict[error_dir]:
+                        del error_dict[error_dir]
+
+                elif ig_name not in photographers_list and ig_name not in special_cases_types:
+                    # Open the webpage for the problem file(s)
+                    webbrowser.open("".join(["https://www.instagram.com/", ig_name]))
+
+                    # Open the directory with the problem file(s)
+                    os.startfile(os.path.dirname(error_dict[error_dir][ig_name][0]))
+                    irl_name = input(
+                        "\nWe have found a new account named \""
+                        + ig_name + "\" that is not in our database. Enter the name of this boy "
+                                    "OR type \"p\" if this is a photographer's account:").strip()
+                    # Handle photographers
+                    if irl_name == "p":
+                        photographers_list.append(ig_name)
+                        with open(PHOTOGRAPHERS_DB_FILE, 'a') as pf:
+                            pf.write(ig_name + "\n")
+                    # Handle new account names
+                    else:
+                        df = pandas.read_excel(IG_DB_FILE)
+                        df = df.append(pandas.DataFrame([[ig_name, irl_name]], columns=df.columns))
+                        df.to_excel(IG_DB_FILE, index=False)
+                        logging.debug("NEW ACCOUNT LOGGED TO SPREADSHEET")
+                        boys_dict[ig_name] = irl_name
                         for filename in error_dict[error_dir][ig_name]:
                             name_file_to_next_available_name(filename, pic_directories_dict[error_dir], irl_name)
                         del error_dict[error_dir][ig_name]
                         if not error_dict[error_dir]:
                             del error_dict[error_dir]
-
-                    elif ig_name not in photographers_list and ig_name not in special_cases_types:
-                        # Open the webpage for the problem file(s)
-                        webbrowser.open("".join(["https://www.instagram.com/", ig_name]))
-
-                        # Open the directory with the problem file(s)
-                        os.startfile(os.path.dirname(error_dict[error_dir][ig_name][0]))
-                        irl_name = input(
-                            "\nWe have found a new account named \""
-                            + ig_name + "\" that is not in our database. Enter the name of this boy "
-                                        "OR type \"p\" if this is a photographer's account:").strip()
-                        # Handle photographers
-                        if irl_name == "p":
-                            photographers_list.append(ig_name)
-                            with open(photographers_list_file, 'a') as pf:
-                                pf.write(ig_name + "\n")
-                        # Handle new account names
-                        else:
-                            writer.writerow({"Account": ig_name,
-                                             "Name": irl_name})
-                            boys_dict[ig_name] = irl_name
-                            for filename in error_dict[error_dir][ig_name]:
-                                name_file_to_next_available_name(filename, pic_directories_dict[error_dir], irl_name)
-                            del error_dict[error_dir][ig_name]
-                            if not error_dict[error_dir]:
-                                del error_dict[error_dir]
 
     # Handle all errors that have been found that are NOT photographers
     if error_dict:
@@ -149,15 +162,15 @@ def main():
                     logging.debug(filename)
 
     # In the normal runtime we should solve all our problems.
-    # If this is not the case then we should debug by printing the error_boys_dict
-    # if error_boys_dict:
-    #    print_error_boys_dict()
+    # If this is not the case then we should debug by printing the error_dict
+    # if error_dict:
+    #    print_error_dict()
 
     # Print a final report
     print_section("FINAL REPORT", "*")
-    logging.debug("NUMBER OF FILES RENAMED: " + str(files_renamed_count))
-    logging.debug("NUMBER OF NEW FILES SORTED: " + str(new_files_successfully_processed))
-    logging.debug("\nTOTAL ERROR ACCOUNTS REMAINING: " + str(sum(len(v) for v in error_dict.values())) + "\n")
+    logging.info("NUMBER OF FILES RENAMED: " + str(files_renamed_count))
+    logging.info("NUMBER OF NEW FILES SORTED: " + str(new_files_successfully_processed))
+    logging.info("\nTOTAL ERROR ACCOUNTS REMAINING: " + str(sum(len(v) for v in error_dict.values())) + "\n")
 
 
 def sort_new_pictures(in_dir, out_dir):
@@ -176,17 +189,18 @@ def sort_new_pictures(in_dir, out_dir):
     os.chdir(in_dir)
 
     # Find the file paths for all the files in the input folder and add them to a list.
-    infile_list = []
+    infile_list: List[Union[str, bytes, os.PathLike]] = list()
     for file in os.listdir(in_dir):
-        infile_list.append(os.path.realpath(os.path.join(in_dir, file)))
+        if file.lower() == "desktop.ini" or file.lower() == "thumbs.db":
+            pass
+        else:
+            infile_list.append(os.path.realpath(os.path.join(in_dir, file)))
 
     # Initialize other variables
     current_boy_ig_or_irl_name = ""
     current_file_basename = ""
-    for full_file_path in infile_list:
+    for full_file_path in list(infile_list):
         current_file_basename = os.path.basename(full_file_path)
-        if current_file_basename.lower() == "desktop.ini" or current_file_basename.lower() == "thumbs.db":
-            continue
 
         # Get the IG Name for the file.
         # TODO: Shift all this to get_IG_name_from_filename()
@@ -214,15 +228,15 @@ def sort_new_pictures(in_dir, out_dir):
             name_file_to_next_available_name(full_file_path, out_dir, current_boy_ig_or_irl_name)
         else:
             # A problem exists with this file. Initiate error handling.
-            logging.debug("-Could not process: " + str(current_file_basename))
+            logging.info("-Could not process: " + str(current_file_basename))
 
             if in_dir not in error_dict:
                 error_dict[in_dir] = defaultdict(list)
             error_dict[in_dir][current_boy_ig_or_irl_name].append(full_file_path)
 
     if len(infile_list) > 0:
-        logging.debug("\n")
-    logging.debug("Done sorting from " + str(in_dir) + " to " + str(out_dir) + ".")
+        logging.info(infile_list)
+    logging.info("Done sorting from " + str(in_dir) + " to " + str(out_dir) + ".")
 
 
 def get_IG_name_from_filename(full_file_path):
@@ -233,35 +247,42 @@ def get_IG_name_from_filename(full_file_path):
     :return: The IG name of the boy associated with this file.
     """
     basename = os.path.basename(str(full_file_path))
-    # Case 1: Screenshots
+    # Case 1: Instagram batch downloader
+    # EXAMPLE: jefe004_2020-07-24_18-16-11_1
+    if re.search(r"^.+?(?=_\d\d\d\d-\d\d)", basename) is not None:
+        return re.search(r"^.+?(?=_\d\d\d\d-\d\d)", basename).group(0)
+    # Case 2: Screenshots
     # EXAMPLE: IMG_0005.png (iPad screenshot)
-    if "Ipad Screenshot" in basename or re.search(r"^IMG_[0-9]{4}\.", basename) is not None:
+    elif "Ipad Screenshot" in basename or re.search(r"^IMG_[0-9]{4}\.", basename) is not None:
         return "Ipad Screenshot"
-    # Case 2: FastSave Android App
+    # Case 3: FastSave Android App
     elif "___" in basename:
         return re.search(r".+?(?=_[0-9]*_{3})(?!_{4,})|.+?(?=_{3,})(?!_{4,})",
                          basename).group(0)
-    # Case 3.1: Chrome Downloader for Instagram
+    # Case 4: Chrome Downloader for Instagram
     # EXAMPLE: boyname_12345678_123456789012345...
     elif re.search(r"_[0-9]{8}_[0-9]{15}", basename) is not None:
         return re.search(r".+?(?=_[0-9]{8}_[0-9]{15})", basename).group(0)
-    # Case 3.2 Chrome Downloader for Instagram (alternate)
+    # Case 5 Chrome Downloader for Instagram (alternate)
     # EXAMEPL: boyname_10576075_402670663234919_903188201_n.jpg
     elif re.search(r"_[0-9]{6,}_[0-9]{15,}_[0-9]{8,}_n", basename) is not None:
         return re.search(r".+?(?=_[0-9]{6,}_[0-9]{15,}_[0-9]{8,}_n)", basename).group(0)
-    # Case 4: Edited Screenshot from phone
+    # Case 6: Edited Screenshot from Android
     # EXAMPLE: 123456(78)_123456...
     elif re.search(r"^[0-9]{6,8}_[0-9]{6}", basename) is not None:
         return "Edited Screenshot"
-    # Case 5: Twitter
+    # Case 7: Twitter
     # EXAMPLE: IMG_12345678_123456...
     elif re.search(r"^IMG_[0-9]{8}_[0-9]{6}", basename) is not None:
         return "Twitter"
-    # Case 6: other screenshot??
+    # Case 8: other screenshot??
     # EXAMPLE: 1234-12-12...
     elif re.search(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}", basename) is not None:
+        # TODO: Handle this more eloquently
+        logging.debug("OTHER FILE TYPE FOUND. THIS MAY CAUSE ERRORS!!!!!!!!!!")
         return "Other"
     else:
+        logging.debug("UNKNOWN FILE TYPE FOUND. THIS IS LIKELY TO CAUSE ERRORS!!!!!!!!!!")
         return "Unknown File Type"
 
 
@@ -322,12 +343,12 @@ def fix_numbering(dir_to_renumber):
 
                     if inner_current_pic_counter != counter_should_be:
                         problems_exist = True
-                        logging.debug(">>>NUMBERING PROBLEM WITH FILE: " + str(picture_of_current_boy))
+                        logging.info(">>>NUMBERING PROBLEM WITH FILE: " + str(picture_of_current_boy))
                         new_file_name_and_ext = inner_current_boy_name + " " + str(counter_should_be) + str(
                             pic_file_name_as_list_of_name0_and_ext1[1])
                         os.rename(os.path.realpath(os.path.join(dir_to_renumber, picture_of_current_boy)),
                                   os.path.realpath(os.path.join(dir_to_renumber, new_file_name_and_ext)))
-                        logging.debug("FIXED: " + str(picture_of_current_boy) + " renamed to: " + new_file_name_and_ext)
+                        logging.info("\tFIXED: " + str(picture_of_current_boy) + " renamed to: " + new_file_name_and_ext)
                         global files_renamed_count
                         files_renamed_count += 1
 
@@ -343,9 +364,9 @@ def fix_numbering(dir_to_renumber):
         previous_boy_name = current_boy_name
 
     if problems_exist:
-        logging.debug("Done fixing numbering in " + str(dir_to_renumber) + ".")
+        logging.info("Done fixing numbering in " + str(dir_to_renumber) + ".")
     else:
-        logging.debug("\nNo problems exist in " + str(dir_to_renumber) + ".")
+        logging.info("No problems exist in " + str(dir_to_renumber) + ".\n")
 
 
 def handle_special_account(error_dir, error_ig_name, is_photographer):
@@ -366,22 +387,22 @@ def handle_special_account(error_dir, error_ig_name, is_photographer):
 
     num_special_files = len(error_dict[error_dir][error_ig_name])
     if is_photographer:
-        logging.debug("\nWe have found " + str(num_special_files)
-                      + " pictures from Instagram photographer \"" + error_ig_name
-                      + "\" in this batch, including:")
+        logging.info("\nWe have found " + str(num_special_files)
+                     + " pictures from Instagram photographer \"" + error_ig_name
+                     + "\" in this batch, including:")
     else:
-        logging.debug("\nWe have found " + str(num_special_files)
-                      + " pictures from Instagram account \"" + error_ig_name
-                      + "\" in this batch, including:")
+        logging.info("\nWe have found " + str(num_special_files)
+                     + " pictures from Instagram account \"" + error_ig_name
+                     + "\" in this batch, including:")
 
     for filename in error_dict[error_dir][error_ig_name]:
-        logging.debug(filename)
+        logging.info(filename)
 
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
 
     if num_special_files > 1:
         # Open the file's location in file explorer
-        # command = "explorer /select, \"" + error_boys_dict[error_dir][error_ig_name][0] + "\""
+        # command = "explorer /select, \"" + error_dict[error_dir][error_ig_name][0] + "\""
         command = "explorer /select, \"" + error_dict[error_dir][error_ig_name][0] + "\""
         subprocess.Popen(command)
         pics_are_same_boy = input("\nAre all these pictures of the same boy? (y/n)").strip().lower()
@@ -397,7 +418,7 @@ def handle_special_account(error_dir, error_ig_name, is_photographer):
 
         boy_irl_name = input("Please enter the boy's name: ").strip()
         if boy_irl_name in boys_dict or boy_irl_name in boys_dict.values():
-            logging.debug("I found him in the database!\n")
+            logging.info("I found him in the database!\n")
             for filename in error_dict[error_dir][error_ig_name]:
                 name_file_to_next_available_name(filename, pic_directories_dict[os.path.dirname(filename)],
                                                  boy_irl_name)
@@ -411,9 +432,9 @@ def handle_special_account(error_dir, error_ig_name, is_photographer):
 
                 # Write change to ig_boys.csv
                 os.chdir(os.path.split(__file__)[0])
-                with open(ig_database_file, 'a', newline="") as file:
-                    writer = csv.DictWriter(file, fieldnames=ig_database_file_fieldnames)
-                    writer.writerow({"Account": boy_ig_name, "Name": boy_irl_name})
+                df = pandas.read_excel(IG_DB_FILE)
+                df = df.append(pandas.DataFrame([[boy_ig_name, boy_irl_name]], columns=df.columns))
+                df.to_excel(IG_DB_FILE, index=False)
 
                 # Update boys_dict
                 boys_dict[boy_ig_name] = boy_irl_name
@@ -425,9 +446,9 @@ def handle_special_account(error_dir, error_ig_name, is_photographer):
                 if not error_dict[error_dir]:
                     del error_dict[error_dir]
             else:
-                logging.debug("Ok, we'll skip this account for now.")
+                logging.info("Ok, we'll skip this account for now.")
     else:
-        logging.debug("Ok, we'll handle these files individually later.")
+        logging.info("Ok, we'll handle these files individually later.")
 
 
 def handle_individual_file(error_dir, error_ig_name, full_file_path):
@@ -451,15 +472,15 @@ def handle_individual_file(error_dir, error_ig_name, full_file_path):
     # Open the picture
     os.startfile(full_file_path)
 
-    logging.debug("\nAnalyzing file: " + full_file_path)
+    logging.info("\nAnalyzing file: " + full_file_path)
     boy_irl_name = input("Last chance. Please enter this boy's name: ").strip()
 
     if boy_irl_name in boys_dict.values():
-        logging.debug("I found " + boy_irl_name + " in the database!")
+        logging.info("I found " + boy_irl_name + " in the database!")
         name_file_to_next_available_name(full_file_path, pic_directories_dict[os.path.dirname(full_file_path)],
                                          boy_irl_name)
         error_dict[error_dir][error_ig_name].remove(full_file_path)
-        if logging.debug(error_dict[error_dir][error_ig_name]) == 0:
+        if len(error_dict[error_dir][error_ig_name]) == 0:
             del error_dict[error_dir][error_ig_name]
             if not error_dict[error_dir]:
                 del error_dict[error_dir]
@@ -472,9 +493,9 @@ def handle_individual_file(error_dir, error_ig_name, full_file_path):
             if user_input != "y" and user_input != "yes":
                 boy_irl_name = input("Please enter this boy's name: ").strip()
             os.chdir(os.path.split(__file__)[0])  # Change to the directory of the script
-            with open(ig_database_file, 'a', newline="") as f:
-                writer = csv.DictWriter(f, fieldnames=ig_database_file_fieldnames)
-                writer.writerow({"Account": boy_ig_name, "Name": boy_irl_name})
+            df = pandas.read_excel(IG_DB_FILE)
+            df = df.append(pandas.DataFrame([[boy_ig_name, boy_irl_name]], columns=df.columns))
+            df.to_excel(IG_DB_FILE, index=False)
             boys_dict[boy_ig_name] = boy_irl_name
             name_file_to_next_available_name(full_file_path, pic_directories_dict[error_dir], boy_irl_name)
             error_dict[error_dir][error_ig_name].remove(full_file_path)
@@ -532,42 +553,35 @@ def init_data():
     """
     # Import globals
     global boys_dict
-    global ig_database_file
-    global photographers_list_file
+    global IG_DB_FILE
+    global PHOTOGRAPHERS_DB_FILE
     global photographers_list
 
-    # Read CSV file into a dictionary
+    # Read Excel file into a dictionary
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
-    with open(ig_database_file, 'r', newline='') as f:
-        # NOTE: newline='' means not to leave white lines between entries in the CSV file when writing new entries
-        global boys_dictionary_file_field_names
-        reader = csv.DictReader(f, fieldnames=ig_database_file_fieldnames)
-        # header = reader.fieldnames  # Advances past header so I can iterate over the dict
-        next(reader)  # Skip headers
-        for row in reader:
-            if row["Name"] == "":
-                f.close()
-                proc = subprocess.Popen(ig_database_file)
-                if row["Account"] == "":
-                    raise Exception("There is an empty row in " + str(
-                        ig_database_file) + " at line " + str(reader.line_num) + ". Please fix this.")
-                else:
-                    webbrowser.open("".join(["https://www.instagram.com/", row["Account"]]))
-                    raise Exception("Account \"" + str(row["Account"]) + "\" has caused an error in " + str(
-                        ig_database_file) + ". All account names MUST have a corresponding IRL name but this one is blank.")
+    df = pandas.read_excel("ig_boys.xlsx")
+    for idx, row in df.iterrows():
+        if pandas.isnull(row["Name"]):
+            if pandas.isnull(row["Account"]):
+                raise Exception("There is an empty row in " + str(
+                    IG_DB_FILE) + " at line " + str(idx) + ". Please fix this.")
             else:
-                if row["Account"] == "":
-                    # If we only have the boy's name then he is { John Smith : John Smith }
-                    boys_dict[row["Name"]] = row["Name"]
-                else:
-                    # This is the ideal situation where we have all the needed info
-                    boys_dict[row["Account"]] = row["Name"]
+                webbrowser.open("".join(["https://www.instagram.com/", row["Account"]]))
+                raise Exception("Account \"" + str(row["Account"]) + "\" has caused an error in " + str(
+                    IG_DB_FILE) + ". All account names MUST have a corresponding IRL name but this one is blank.")
+        else:
+            if pandas.isnull(row["Account"]):
+                # If we only have the boy's name then he is { John Smith : John Smith }
+                boys_dict[row["Name"]] = row["Name"]
+            else:
+                # If we have all the info (best case scenario)
+                boys_dict[row["Account"]] = row["Name"]
 
-    with open(photographers_list_file, 'r') as f:
+    with open(PHOTOGRAPHERS_DB_FILE, 'r') as f:
         photographers_list = f.read().splitlines()
 
 
-def print_section(section_title, symbol):
+def print_section(section_title, symbol="*"):
     """
     A helper method to print our output to the console in a pretty fashion
 
@@ -575,12 +589,12 @@ def print_section(section_title, symbol):
     :param symbol:      The symbol to repetetively print to box in our output. This will usually be a '*'.
     :return:    None
     """
-    logging.debug("\n" + (symbol * 50) + "\n" + section_title + "\n" + (symbol * 50) + "\n")
+    logging.info("\n" + (symbol * 50) + "\n" + section_title + "\n" + (symbol * 50) + "\n")
 
 
-def print_error_boys_dict():
+def print_error_dict():
     """
-    A helper method that prints out error_boys_dict.
+    A helper method that prints out error_dict.
     This is NOT used in the ordinary running of the program unless the script is modified to do so.
 
     :return: None
@@ -593,7 +607,7 @@ def print_error_boys_dict():
             for fname in error_dict[error_dir][ig_name]:
                 logging.debug("\t\tFILE: " + fname)
     if not error_dict:
-        logging.debug("error_boys_dict is empty!")
+        logging.debug("error_dict is empty!")
     input("\nPress Enter to continue the script...")
 
 
@@ -623,7 +637,7 @@ def find_unknown_boys_in_boys_dict(dir):
         print_section("UNKNOWN BOYS EXIST IN " + str(dir), "*")
 
     for boy_name in error_boys_list:
-        logging.debug(boy_name)
+        logging.info(boy_name)
 
 
 if __name__ == '__main__':
