@@ -1,7 +1,14 @@
 #! /usr/bin/env python3
 
 # TODO: give an option in final GUI version where I can change the name of a boy on the fly
-#  so all their files namechange to the new name.
+#  so all their files change their name to the new name.
+# TODO: Add a pass through the NEED TO SORT folders where it checks to see if something like
+#  "Ben Jordan 1249781y287412.jpg" exists and can be sorted. This currently only exists in the already sorted folders.
+
+# TODO: Remove dupes from people database.
+
+# TODO: If I have a file like retina_retrospective_2025-01-21_22-12-30_xx where the last 2 X's are incrementing numbers,
+#  These belong to the same group of files. Teach the sorter to recognize these and sort them ALL at once.
 
 import logging
 import sys
@@ -205,24 +212,23 @@ def sort_new_pictures(in_dir, out_dir):
 
     # Initialize other variables
     current_account_or_irl_name = ""
-    current_file_basename = ""
+    curr_file_basename = ""
     for full_file_path in list(infile_list):
-        current_file_basename = os.path.basename(full_file_path)
+        curr_file_basename = os.path.basename(full_file_path)
 
         # Get the IG Name for the file.
         # TODO: Shift all this to get_IG_name_from_filename()
         # TODO: This applies to all 3 cases. Convert the first 2
         # Case 1: The file is named after the account's first and last name.
         # EXAMPLE: "John Smith.jpg."
-        if current_file_basename in accounts_dict.values():
-            current_account_or_irl_name = current_file_basename
+        if curr_file_basename in accounts_dict.values():
+            current_account_or_irl_name = curr_file_basename
         # Case 2: The file is named after the boy's first and last name BUT is more complicated.
         # EXAMPLE: "John Smith (2).jpg."
-        elif re.search(r".+?(?![^().0-9])", str(current_file_basename)) is not None and re.search(
-                r".+?(?![^().0-9])", str(current_file_basename.split)).group(
-            0).strip() in accounts_dict.values():
+        elif re.search(r".+?(?![^().0-9])", str(curr_file_basename)) is not None and re.search(
+                r".+?(?![^().0-9])", str(curr_file_basename.split)).group(0).strip() in accounts_dict.values():
             current_account_or_irl_name = re.search(
-                r".+?(?![^().0-9])", str(current_file_basename)).group(0).strip()
+                r".+?(?![^().0-9])", str(curr_file_basename)).group(0).strip()
         # Case 3: The file is not simply the boy's first and last name.
         # Use a sorting method to figure out what to do with this file.
         else:
@@ -236,20 +242,19 @@ def sort_new_pictures(in_dir, out_dir):
             name_file_to_next_available_name(full_file_path, out_dir, current_account_or_irl_name)
         else:
             # A problem exists with this file. Initiate error handling.
-            logging.info("-Could not process: " + str(current_file_basename))
+            logging.info("-Could not process: " + str(curr_file_basename))
 
             if in_dir not in error_dict:
                 error_dict[in_dir] = defaultdict(list)
             error_dict[in_dir][current_account_or_irl_name].append(full_file_path)
 
-    if len(infile_list) > 0:
-        logging.info(infile_list)
     logging.info("Done sorting from " + str(in_dir) + " to " + str(out_dir) + ".")
 
 
 def get_ig_name_from_filename(full_file_path):
     """
-    This is a helper method to attempt to rename a file based off of the name that it originally had when it was downloaded.
+    This is a helper method to attempt to rename a file based off of the name
+    that it originally had when it was downloaded.
 
     :param full_file_path: The path to the file that we want the IG name from.
     :return: The IG name of the user associated with this file.
@@ -287,29 +292,39 @@ def get_ig_name_from_filename(full_file_path):
     # EXAMPLE: 1234-12-12...
     elif re.search(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}", basename) is not None:
         # TODO: Handle this more eloquently
-        logging.debug("OTHER FILE TYPE FOUND. THIS MAY CAUSE ERRORS!!!!!!!!!!")
+        logging.debug("OTHER FILE TYPE FOUND: " + full_file_path)
         return "Other"
     else:
-        logging.debug("UNKNOWN FILE TYPE FOUND. THIS IS LIKELY TO CAUSE ERRORS!!!!!!!!!!")
+        logging.info("UNKNOWN FILE TYPE: " + full_file_path)
         return "Unknown File Type"
 
 
-def fix_numbering(dir_to_renumber):
+def fix_numbering(dir_to_renumber: str):
     """
     This renumbers ALL the files in a directory (John Smith 1.png, John Smith 2.png, etc.).
 
     :param dir_to_renumber: A directory of files that need to be renumbered
     :return: None
     """
-    # Initialize variables
-    prev_boy_name = None
-    curr_boy_name: str = ""
-    current_pic_counter: int = -1  # How many pictures of this boy?
-    max_pic_counter: int = 1
-    problems_exist: bool = False
 
-    current_boy_pic_list = [None]
-    file_name_as_list_of_name0_and_ext1 = list()
+    global accounts_dict
+
+    # Init func variables
+    prev_person_name: str = None
+    """The name of the last person for the last file we inspected."""
+    curr_person_name: str = ""
+    """The current person of the file I am examining."""
+
+    curr_pic_num: int = -1
+    """The number of the current picture being inspected.
+    For example, for Josh Smith 52.jpg this will be 52"""
+    max_pic_counter: int = 1
+
+    problems_exist: bool = False
+    """Used to track stuff for our final report"""
+
+    curr_fname_as_list_of_name0_and_ext1 = list()
+    """Updates with each file we loop over."""
 
     # If dir_to_renumber directory doesn't exist, create it.
     if not os.path.exists(dir_to_renumber):
@@ -317,64 +332,53 @@ def fix_numbering(dir_to_renumber):
 
     # Get all the stuff in my current working directory
     os.chdir(dir_to_renumber)  # changes current working directory
-    files_list = os.listdir(os.getcwd())
+    dir_files_list = sorted(os.listdir(os.getcwd()),
+                            key=lambda s: [int(t) if t.isdigit() else t.lower() for t in re.split(r'(\d+)', s)])
+
+    # Ignore autogenerated files
     if os.path.isfile(os.path.join(dir_to_renumber, "Thumbs.db")):
-        files_list.remove("Thumbs.db")
+        dir_files_list.remove("Thumbs.db")
     if os.path.isfile(os.path.join(dir_to_renumber, "desktop.ini")):
-        files_list.remove("desktop.ini")
+        dir_files_list.remove("desktop.ini")
 
-    # Compile files_list into boy_names_and_numbers_list_of_lists, we will sort it in a minute
-    for current_file in files_list:
-        file_name_as_list_of_name0_and_ext1 = list(os.path.splitext(os.path.basename(current_file)))
+    for curr_file in dir_files_list:
+        # Compile dir_files_list into current_person_corrected_file_list
+        curr_fname_as_list_of_name0_and_ext1 = list(os.path.splitext(os.path.basename(curr_file)))
 
-        curr_boy_name = re.search(r"[^0-9]+", file_name_as_list_of_name0_and_ext1[0]).group().rstrip()
-        current_pic_counter = int(re.search(r"[0-9]+", file_name_as_list_of_name0_and_ext1[0]).group())  # pic_counter
+        # Each file name has the IRL name and the pic counter. Extract these.
+        curr_person_name = re.search(r"[^0-9]+", curr_fname_as_list_of_name0_and_ext1[0]).group().strip()
+        if curr_person_name not in accounts_dict.values():
+            raise Exception(os.path.join(dir_to_renumber, curr_file) + " cannot be renumbered because this person does not exist in the database.")
 
-        if prev_boy_name == curr_boy_name:
-            if current_pic_counter > max_pic_counter:
-                max_pic_counter = current_pic_counter
-            if max_pic_counter > len(current_boy_pic_list) + 1:
-                current_boy_pic_list[len(current_boy_pic_list): max_pic_counter + 1] = [None] * (
-                        max_pic_counter - len(current_boy_pic_list))
-            current_boy_pic_list.insert(current_pic_counter, current_file)
-            if current_pic_counter != max_pic_counter and current_boy_pic_list[current_pic_counter + 1] is None:
-                del current_boy_pic_list[current_pic_counter + 1]
+        try:
+            curr_pic_num = int(re.search(r"\d(.*)", curr_fname_as_list_of_name0_and_ext1[0]).group())
+        except AttributeError as e:
+            # If the file does not have numbering, automatically assign it the maximum int value.
+            curr_pic_num = sys.maxsize
+        except ValueError as e:
+            raise ValueError("Issue processing file: " + curr_file)
 
-        else:
-            counter_should_be = 1
-            loop_counter = 0
-            for picture_of_current_boy in current_boy_pic_list[0:max_pic_counter + 1]:
-                if picture_of_current_boy:
-                    # Initialize variables
-                    pic_file_name_as_list_of_name0_and_ext1 = list(
-                        os.path.splitext(os.path.basename(picture_of_current_boy)))
-                    inner_current_boy_name = re.search(r"[^0-9]+",
-                                                       pic_file_name_as_list_of_name0_and_ext1[0]).group().rstrip()
-                    inner_current_pic_counter = int(
-                        re.search(r"[0-9]+", pic_file_name_as_list_of_name0_and_ext1[0]).group())  # pic_counter
+        if prev_person_name != curr_person_name:
+            # Reset variables for a new person.
+            max_pic_counter = 1
+            prev_person_name = curr_person_name
 
-                    if inner_current_pic_counter != counter_should_be:
-                        problems_exist = True
-                        logging.info(">>>NUMBERING PROBLEM WITH FILE: " + str(picture_of_current_boy))
-                        new_file_name_and_ext = inner_current_boy_name + " " + str(counter_should_be) + str(
-                            pic_file_name_as_list_of_name0_and_ext1[1])
-                        os.rename(os.path.realpath(os.path.join(dir_to_renumber, picture_of_current_boy)),
-                                  os.path.realpath(os.path.join(dir_to_renumber, new_file_name_and_ext)))
-                        logging.info(
-                            "\tFIXED: " + str(picture_of_current_boy) + " renamed to: " + new_file_name_and_ext)
-                        global files_renamed_count
-                        files_renamed_count += 1
+        # Check to see if numbering is +1 from previous file
+        if curr_pic_num != max_pic_counter:
+            # Something is wrong with the file numbering.
+            problems_exist = True
+            logging.info("Numbering problem exists with file: " + str(curr_file))
 
-                    counter_should_be += 1
-                loop_counter += 1
+            new_fname_and_ext = curr_person_name + " " + str(max_pic_counter) + str(
+                curr_fname_as_list_of_name0_and_ext1[1])
+            os.rename(os.path.realpath(os.path.join(dir_to_renumber, curr_file)),
+                      os.path.realpath(os.path.join(dir_to_renumber, new_fname_and_ext)))
+            logging.info("\tFIXED: " + str(curr_file) + " renumbered to: " + new_fname_and_ext)
 
-            max_pic_counter = current_pic_counter
-            current_boy_pic_list = [None]  # reset list
-            if max_pic_counter > len(current_boy_pic_list) + 1:
-                current_boy_pic_list[len(current_boy_pic_list): max_pic_counter + 1] = [None] * (
-                        max_pic_counter - len(current_boy_pic_list))
-            current_boy_pic_list.insert(current_pic_counter, current_file)
-        prev_boy_name = curr_boy_name
+            global files_renamed_count
+            files_renamed_count += 1
+
+        max_pic_counter = max_pic_counter + 1
 
     if problems_exist:
         logging.info("Done fixing numbering in " + str(dir_to_renumber) + ".")
@@ -418,23 +422,23 @@ def handle_special_account(error_dir, error_ig_name, is_photographer):
         # command = "explorer /select, \"" + error_dict[error_dir][error_ig_name][0] + "\""
         command = "explorer /select, \"" + error_dict[error_dir][error_ig_name][0] + "\""
         subprocess.Popen(command)
-        pics_are_same_boy = input("\nAre all these pictures of the same boy? (y/n)").strip().lower()
+        pics_are_same_person = input("\nAre all these pictures of the same person? (y/n)").strip().lower()
     else:
-        pics_are_same_boy = "yes"
+        pics_are_same_person = "yes"
         # Open the file itself
         os.startfile(error_dict[error_dir][error_ig_name][0])
 
-    if pics_are_same_boy == "y" or pics_are_same_boy == "yes":
+    if pics_are_same_person == "y" or pics_are_same_person == "yes":
         # Open the Instagram's page in web browser
         if error_ig_name not in special_cases_types:
             webbrowser.open("".join(["https://www.instagram.com/", error_ig_name]))
 
-        boy_irl_name = input("Please enter the boy's name: ").strip()
-        if boy_irl_name in accounts_dict or boy_irl_name in accounts_dict.values():
+        person_irl_name = input("Please enter the boy's name: ").strip()
+        if person_irl_name in accounts_dict or person_irl_name in accounts_dict.values():
             logging.info("I found him in the database!\n")
             for filename in error_dict[error_dir][error_ig_name]:
                 name_file_to_next_available_name(filename, pic_directories_dict[os.path.dirname(filename)],
-                                                 boy_irl_name)
+                                                 person_irl_name)
             del error_dict[error_dir][error_ig_name]
             if not error_dict[error_dir]:
                 del error_dict[error_dir]
@@ -446,15 +450,15 @@ def handle_special_account(error_dir, error_ig_name, is_photographer):
                 # Write change to ig_boys.csv
                 os.chdir(os.path.split(__file__)[0])
                 df = pandas.read_excel(IG_DB_FILE)
-                df = df.append(pandas.DataFrame([[boy_ig_name, boy_irl_name]], columns=df.columns))
+                df = df.append(pandas.DataFrame([[boy_ig_name, person_irl_name]], columns=df.columns))
                 df.to_excel(IG_DB_FILE, index=False)
 
                 # Update boys_dict
-                accounts_dict[boy_ig_name] = boy_irl_name
+                accounts_dict[boy_ig_name] = person_irl_name
 
                 # Loop over the problem files associated with this new account and fix them.
                 for file in error_dict[error_dir][error_ig_name]:
-                    name_file_to_next_available_name(file, pic_directories_dict[error_dir], boy_irl_name)
+                    name_file_to_next_available_name(file, pic_directories_dict[error_dir], person_irl_name)
                 del error_dict[error_dir][error_ig_name]
                 if not error_dict[error_dir]:
                     del error_dict[error_dir]
@@ -539,7 +543,7 @@ def name_file_to_next_available_name(full_filename, out_dir, boy_irl_name):
     os.chdir(out_dir)
     files_in_output_dir = os.listdir(out_dir)
     file_basenames_in_output_dir_list = [os.path.splitext(os.path.basename(file))[0] for file in
-                                                  files_in_output_dir]
+                                         files_in_output_dir]
 
     # Find the right number for our new filename.
     next_number_for_filename = 1
@@ -624,30 +628,34 @@ def print_error_dict():
         logging.debug("error_dict is empty!")
 
 
-def find_unknown_account_in_accounts_dict(dir):
+def find_unknown_account_in_accounts_dict(dir_to_examine):
     """
     Finds all the files in a directory that are not in boys_dict
 
-    :param dir: Directory to search in
+    :param dir_to_examine: Directory to search in
     :return: None
     """
     # Get a list of all the files in this directory
     full_file_paths = []
-    for file in os.listdir(dir):
-        full_file_paths.append(os.path.realpath(os.path.join(dir, file)))
+    for file in os.listdir(dir_to_examine):
+        full_file_paths.append(os.path.realpath(os.path.join(dir_to_examine, file)))
 
     error_boys_list = []
-    for full_file_path in full_file_paths:
-        current_file_basename = os.path.basename(full_file_path)
+    for fpath in full_file_paths:
+        current_file_basename = os.path.basename(fpath)
         if current_file_basename.lower() == "desktop.ini" or current_file_basename.lower() == "thumbs.db":
             continue
 
-        boy_name = re.search(r".+?(?=[" "][0-9]+)", current_file_basename).group(0).strip()
+        try:
+            boy_name = re.search(r".+?(?=[" "][0-9]+)", current_file_basename).group(0).strip()
+        except Exception as e:
+            raise Exception(
+                "FILE: " + fpath + " has caused an error in find_unknown_account_in_accounts_dict().\n" + str(e))
         if boy_name not in accounts_dict.values() and boy_name not in error_boys_list:
             error_boys_list.append(boy_name)
 
     if error_boys_list:
-        print_section("UNKNOWN BOYS EXIST IN " + str(dir), "*")
+        print_section("UNKNOWN BOYS EXIST IN " + str(dir_to_examine), "*")
 
     for boy_name in error_boys_list:
         logging.info(boy_name)
