@@ -2,6 +2,7 @@
 settings.ini
 ig_people.xlsx
 ig_people.json
+/photographers.txt
 
 # Downloaded content
 vincentwetzel/
@@ -25,3 +26,4 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+photographers.txt

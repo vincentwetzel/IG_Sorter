@@ -16,7 +16,8 @@ import os
 import re
 import webbrowser
 import subprocess
-import pandas
+import json
+import configparser
 from collections import defaultdict
 from typing import Dict, Union, List
 
@@ -26,8 +27,11 @@ from typing import Dict, Union, List
 logging.basicConfig(stream=sys.stderr,
                     level=logging.DEBUG)
 
+config = configparser.ConfigParser()
+config.read('settings.ini')
+
 # Directories
-ROOT_PICTURE_DIR = os.path.realpath("I:/Google Drive (radagastthe3rd@gmail.com)/Pictures/")
+ROOT_PICTURE_DIR = os.path.realpath(config.get('Paths', 'root_picture_dir', fallback="I:/Google Drive (radagastthe3rd@gmail.com)/Pictures/"))
 pic_directories_dict: [str, str] = {
     os.path.join(ROOT_PICTURE_DIR, "NEED TO SORT/NSFW"): os.path.join(ROOT_PICTURE_DIR, "NSFW"),
     os.path.join(ROOT_PICTURE_DIR, "NEED TO SORT/MSFW"): os.path.join(ROOT_PICTURE_DIR, "MSFW"),
@@ -35,7 +39,7 @@ pic_directories_dict: [str, str] = {
 """{ NEED_TO_SORT Directory : Output Directory }"""
 
 # Data files
-IG_DB_FILE = os.path.join(os.path.dirname(__file__), "ig_boys.xlsx")
+IG_DB_FILE = os.path.join(os.path.dirname(__file__), "ig_people.json")
 """The database file that contains pairs of Instagram accounts and the users' IRL names"""
 
 accounts_dict: Dict[str, str] = dict()
@@ -130,9 +134,11 @@ def main():
                             pf.write(ig_name + "\n")
                     # Handle new account names
                     else:
-                        df: pandas.DataFrame = pandas.read_excel(IG_DB_FILE)
-                        df = pandas.concat([df, pandas.DataFrame([[ig_name, irl_name]], columns=df.columns)])
-                        df.to_excel(IG_DB_FILE, index=False)
+                        with open(IG_DB_FILE, "r") as f:
+                            db_data = json.load(f)
+                        db_data.append({"Account": ig_name, "Name": irl_name})
+                        with open(IG_DB_FILE, "w") as f:
+                            json.dump(db_data, f, indent=4)
                         logging.debug(
                             "ACCOUNT: " + ig_name + " for USER: " + irl_name + " has been added to the database.")
                         accounts_dict[ig_name] = irl_name
@@ -185,6 +191,8 @@ def main():
     logging.info("NUMBER OF FILES RENAMED: " + str(files_renamed_count))
     logging.info("NUMBER OF NEW FILES SORTED: " + str(new_files_successfully_processed))
     logging.info("\nTOTAL ERROR ACCOUNTS REMAINING: " + str(sum(len(v) for v in error_dict.values())) + "\n")
+
+    sys.exit()
 
 
 def sort_new_pictures(in_dir, out_dir):
@@ -356,7 +364,7 @@ def fix_numbering(dir_to_renumber: str):
             # If the file does not have numbering, automatically assign it the maximum int value.
             curr_pic_num = sys.maxsize
         except ValueError as e:
-            raise ValueError("Issue processing file: " + curr_file)
+            raise ValueError("Issue processing file: " + os.path.join(dir_to_renumber, curr_file))
 
         if prev_person_name != curr_person_name:
             # Reset variables for a new person.
@@ -447,11 +455,13 @@ def handle_special_account(error_dir, error_ig_name, is_photographer):
             if user_input.lower() == "y" or user_input.lower() == "yes":
                 boy_ig_name = input("Enter the name of this boy's IG account:").strip()
 
-                # Write change to ig_boys.csv
+                # Write change to JSON file
                 os.chdir(os.path.split(__file__)[0])
-                df = pandas.read_excel(IG_DB_FILE)
-                df = df.append(pandas.DataFrame([[boy_ig_name, person_irl_name]], columns=df.columns))
-                df.to_excel(IG_DB_FILE, index=False)
+                with open(IG_DB_FILE, "r") as f:
+                    db_data = json.load(f)
+                db_data.append({"Account": boy_ig_name, "Name": person_irl_name})
+                with open(IG_DB_FILE, "w") as f:
+                    json.dump(db_data, f, indent=4)
 
                 # Update boys_dict
                 accounts_dict[boy_ig_name] = person_irl_name
@@ -510,9 +520,11 @@ def handle_individual_file(error_dir, error_ig_name, full_file_path):
             if user_input != "y" and user_input != "yes":
                 boy_irl_name = input("Please enter this boy's name: ").strip()
             os.chdir(os.path.split(__file__)[0])  # Change to the directory of the script
-            df = pandas.read_excel(IG_DB_FILE)
-            df = df.append(pandas.DataFrame([[boy_ig_name, boy_irl_name]], columns=df.columns))
-            df.to_excel(IG_DB_FILE, index=False)
+            with open(IG_DB_FILE, "r") as f:
+                db_data = json.load(f)
+            db_data.append({"Account": boy_ig_name, "Name": boy_irl_name})
+            with open(IG_DB_FILE, "w") as f:
+                json.dump(db_data, f, indent=4)
             accounts_dict[boy_ig_name] = boy_irl_name
             name_file_to_next_available_name(full_file_path, pic_directories_dict[error_dir], boy_irl_name)
             error_dict[error_dir][error_ig_name].remove(full_file_path)
@@ -575,12 +587,13 @@ def init_data():
     global PHOTOGRAPHERS_DB_FILE
     global photographers_list
 
-    # Read Excel file into a dictionary
+    # Read JSON file into a dictionary
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
-    df = pandas.read_excel("ig_boys.xlsx")
-    for idx, row in df.iterrows():
-        if pandas.isnull(row["Name"]):
-            if pandas.isnull(row["Account"]):
+    with open(IG_DB_FILE, "r") as f:
+        db_data = json.load(f)
+    for idx, row in enumerate(db_data):
+        if row.get("Name") is None:
+            if row.get("Account") is None:
                 raise Exception("There is an empty row in " + str(
                     IG_DB_FILE) + " at line " + str(idx) + ". Please fix this.")
             else:
@@ -588,7 +601,7 @@ def init_data():
                 raise Exception("Account \"" + str(row["Account"]) + "\" has caused an error in " + str(
                     IG_DB_FILE) + ". All account names MUST have a corresponding IRL name but this one is blank.")
         else:
-            if pandas.isnull(row["Account"]):
+            if row.get("Account") is None:
                 # If we only have the boy's name then he is { John Smith : John Smith }
                 accounts_dict[row["Name"]] = row["Name"]
             else:
