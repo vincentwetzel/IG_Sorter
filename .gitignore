@@ -12,6 +12,9 @@ vincentwetzel/
 .vscode/
 *.iml
 
+# Qwen Code
+.qwen/
+
 # Python
 __pycache__/
 *.pyc
