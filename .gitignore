@@ -1,4 +1,24 @@
-/ig_boys.xlsx
-/ig_boys.xlsx.bak
-/instaloader_downloader.py
-/pw.txt
+# Credentials & Settings
+settings.ini
+ig_people.xlsx
+ig_people.json
+
+# Downloaded content
+vincentwetzel/
+：saved/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.env
+
+# OS
+.DS_Store
+Thumbs.db
