@@ -1,0 +1,89 @@
+/* Light Theme */
+QWidget {
+    background-color: #FFFFFF;
+    color: #000000;
+    font-family: "Segoe UI", Arial, sans-serif;
+    font-size: 13px;
+}
+
+QPushButton {
+    background-color: #F3F3F3;
+    border: 1px solid #E0E0E0;
+    border-radius: 4px;
+    padding: 8px 16px;
+    color: #000000;
+}
+
+QPushButton:hover {
+    background-color: #E8E8E8;
+}
+
+QPushButton:pressed {
+    background-color: #D0D0D0;
+}
+
+QPushButton:checked, QPushButton:focus {
+    background-color: #0078D4;
+    border-color: #0078D4;
+    color: #FFFFFF;
+}
+
+QLabel {
+    color: #000000;
+}
+
+QLineEdit, QSpinBox, QComboBox, QTextEdit {
+    background-color: #FFFFFF;
+    border: 1px solid #E0E0E0;
+    border-radius: 4px;
+    padding: 4px 8px;
+    color: #000000;
+}
+
+QLineEdit:focus, QSpinBox:focus, QComboBox:focus {
+    border-color: #0078D4;
+}
+
+QHeaderView::section {
+    background-color: #F3F3F3;
+    border: 1px solid #E0E0E0;
+    padding: 4px;
+}
+
+QTableWidget {
+    background-color: #FFFFFF;
+    alternate-background-color: #F9F9F9;
+    gridline-color: #E0E0E0;
+}
+
+QScrollBar:vertical {
+    background-color: #F3F3F3;
+    width: 12px;
+}
+
+QScrollBar::handle:vertical {
+    background-color: #C0C0C0;
+    border-radius: 6px;
+    min-height: 20px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background-color: #A0A0A0;
+}
+
+QProgressBar {
+    border: 1px solid #E0E0E0;
+    border-radius: 4px;
+    text-align: center;
+    background-color: #F3F3F3;
+}
+
+QProgressBar::chunk {
+    background-color: #0078D4;
+    border-radius: 3px;
+}
+
+QStatusBar {
+    background-color: #F3F3F3;
+    border-top: 1px solid #E0E0E0;
+}
