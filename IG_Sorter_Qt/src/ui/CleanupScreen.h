@@ -19,6 +19,7 @@ public:
 
     void setDirectories(const QStringList& dirs);
     void updateDirectoryProgress(const QString& dir, int current, int total);
+    void setDirectoryRenamed(const QString& dir, int filesRenamed);
     void showUnresolvedIssues(const QStringList& unknownNames, DatabaseManager* db);
     void enableContinue(bool enabled);
 

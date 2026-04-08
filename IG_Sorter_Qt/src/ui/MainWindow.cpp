@@ -218,6 +218,8 @@ void MainWindow::startSortingPipeline() {
             m_cleanupScreen, [this](const QString& dir, int current, int total) {
         m_cleanupScreen->updateDirectoryProgress(dir, current, total);
     });
+    connect(m_engine, &SorterEngine::cleanupDirectoryDone,
+            m_cleanupScreen, &CleanupScreen::setDirectoryRenamed);
 
     // Run cleanup via the engine (async, with progress signals)
     QFutureWatcher<CleanupReport>* cleanupWatcher =

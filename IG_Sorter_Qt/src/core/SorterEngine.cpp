@@ -31,8 +31,12 @@ bool SorterEngine::initialize(const QString& sourceDir, const QStringList& outpu
 CleanupReport SorterEngine::runCleanup() {
     CleanupReport combinedReport;
 
+    LogManager::instance()->info(QString("Starting cleanup on %1 directories").arg(m_outputDirs.size()));
+
     for (int i = 0; i < m_outputDirs.size(); ++i) {
         const QString& dir = m_outputDirs[i];
+
+        LogManager::instance()->info(QString("Cleaning directory: %1").arg(dir));
 
         // Create a DirectoryCleanup instance and run it synchronously
         // (runCleanup itself runs in a background thread via QFutureWatcher)
@@ -52,14 +56,20 @@ CleanupReport SorterEngine::runCleanup() {
         combinedReport.totalFilesRenamed += report.totalFilesRenamed;
         combinedReport.unresolvedIssues.append(report.unresolvedIssues);
         LogManager::instance()->logDirectoryCleaned(dir, report.totalFilesRenamed);
+
+        // Signal that this directory is done
+        emit cleanupDirectoryDone(dir, report.totalFilesRenamed);
     }
 
     return combinedReport;
 }
 
 QList<FileGroup> SorterEngine::groupFiles() {
+    LogManager::instance()->info(QString("Grouping files from: %1").arg(m_sourceDir));
     FileGrouper grouper(m_db);
-    return grouper.group(m_sourceDir);
+    QList<FileGroup> groups = grouper.group(m_sourceDir);
+    LogManager::instance()->info(QString("Found %1 groups").arg(groups.size()));
+    return groups;
 }
 
 SortResult SorterEngine::sortFiles(const QStringList& filePaths,
@@ -71,6 +81,10 @@ SortResult SorterEngine::sortFiles(const QStringList& filePaths,
     Q_UNUSED(accountType);
 
     SortResult result;
+
+    LogManager::instance()->info(
+        QString("Sorting %1 files to %2 as '%3'")
+            .arg(filePaths.size()).arg(outputDir).arg(irlName));
 
     for (const auto& filePath : filePaths) {
         QFileInfo fi(filePath);

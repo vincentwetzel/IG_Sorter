@@ -17,7 +17,7 @@ CleanupScreen::CleanupScreen(QWidget* parent)
     m_layout->setSpacing(20);
     m_layout->setContentsMargins(40, 40, 40, 40);
 
-    m_titleLabel = new QLabel("Cleaning Up Directories", this);
+    m_titleLabel = new QLabel("Directory Cleanup", this);
     m_titleLabel->setAlignment(Qt::AlignCenter);
     QFont titleFont = m_titleLabel->font();
     titleFont.setPointSize(20);
@@ -25,7 +25,7 @@ CleanupScreen::CleanupScreen(QWidget* parent)
     m_titleLabel->setFont(titleFont);
     m_layout->addWidget(m_titleLabel);
 
-    m_statusLabel = new QLabel("Checking file numbering in output directories...", this);
+    m_statusLabel = new QLabel("", this);
     m_statusLabel->setAlignment(Qt::AlignCenter);
     m_statusLabel->setWordWrap(true);
     m_layout->addWidget(m_statusLabel);
@@ -132,7 +132,7 @@ void CleanupScreen::setDirectories(const QStringList& dirs) {
 
     m_continueButton->setEnabled(false);
     m_resolutionWidget->hide();
-    m_statusLabel->setText("Running cleanup...");
+    m_statusLabel->clear();
 }
 
 void CleanupScreen::updateDirectoryProgress(const QString& dir, int current, int total) {
@@ -140,6 +140,28 @@ void CleanupScreen::updateDirectoryProgress(const QString& dir, int current, int
         int percent = total > 0 ? (current * 100) / total : 100;
         m_progressBars[dir]->setValue(percent);
         m_progressLabels[dir]->setText(QString("%1 / %2 files scanned").arg(current).arg(total));
+
+        // Turn green at 100%
+        if (percent >= 100) {
+            m_progressBars[dir]->setStyleSheet(
+                "QProgressBar::chunk { background-color: #2ecc71; }"
+            );
+        } else {
+            m_progressBars[dir]->setStyleSheet("");
+        }
+    }
+}
+
+void CleanupScreen::setDirectoryRenamed(const QString& dir, int filesRenamed) {
+    if (m_progressLabels.contains(dir)) {
+        QString existing = m_progressLabels[dir]->text();
+        if (filesRenamed > 0) {
+            m_progressLabels[dir]->setText(
+                QString("%1 — %2 file(s) renumbered").arg(existing).arg(filesRenamed));
+        } else {
+            m_progressLabels[dir]->setText(
+                QString("%1 — all files in order").arg(existing));
+        }
     }
 }
 
