@@ -1,4 +1,5 @@
 #include "utils/FileUtils.h"
+#include "utils/LogManager.h"
 #include <QFile>
 #include <QDir>
 #include <QFileInfo>
@@ -11,12 +12,14 @@ QString FileUtils::safeMove(const QString& sourcePath,
     QDir destDirectory(destDir);
     if (!destDirectory.exists()) {
         if (errorMsg) *errorMsg = "Destination directory does not exist.";
+        LogManager::instance()->logError(sourcePath, *errorMsg);
         return QString();
     }
 
     QFileInfo sourceInfo(sourcePath);
     if (!sourceInfo.exists()) {
         if (errorMsg) *errorMsg = "Source file does not exist.";
+        LogManager::instance()->logError(sourcePath, *errorMsg);
         return QString();
     }
 
@@ -25,6 +28,7 @@ QString FileUtils::safeMove(const QString& sourcePath,
     // If destination already exists, find next available number
     if (QFile::exists(finalPath)) {
         if (errorMsg) *errorMsg = "Destination file already exists.";
+        LogManager::instance()->logFileSkipped(sourcePath, *errorMsg);
         return QString();
     }
 
@@ -34,6 +38,7 @@ QString FileUtils::safeMove(const QString& sourcePath,
 
     if (!QFile::copy(sourcePath, tempPath)) {
         if (errorMsg) *errorMsg = "Failed to copy file to destination.";
+        LogManager::instance()->logError(sourcePath, *errorMsg);
         return QString();
     }
 
@@ -42,6 +47,7 @@ QString FileUtils::safeMove(const QString& sourcePath,
     if (!tempInfo.exists() || tempInfo.size() != sourceInfo.size()) {
         QFile::remove(tempPath);
         if (errorMsg) *errorMsg = "Copy verification failed.";
+        LogManager::instance()->logError(sourcePath, *errorMsg);
         return QString();
     }
 
@@ -49,16 +55,18 @@ QString FileUtils::safeMove(const QString& sourcePath,
     if (!QFile::rename(tempPath, finalPath)) {
         QFile::remove(tempPath);
         if (errorMsg) *errorMsg = "Failed to finalize rename.";
+        LogManager::instance()->logError(sourcePath, *errorMsg);
         return QString();
     }
 
     // Phase 3: Delete source only after everything succeeded
     if (!QFile::remove(sourcePath)) {
         if (errorMsg) *errorMsg = "Source file could not be removed after copy.";
-        // Don't return the dest path — the operation is only partially successful
+        LogManager::instance()->logError(sourcePath, *errorMsg);
         return QString();
     }
 
+    LogManager::instance()->logFileMoved(sourcePath, finalPath, tempInfo.size());
     return finalPath;
 }
 

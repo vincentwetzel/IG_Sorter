@@ -1,6 +1,7 @@
 #include "core/SorterEngine.h"
 #include "core/DatabaseManager.h"
 #include "utils/FileUtils.h"
+#include "utils/LogManager.h"
 #include <QDir>
 
 SorterEngine::SorterEngine(DatabaseManager* db, QObject* parent)
@@ -50,6 +51,7 @@ CleanupReport SorterEngine::runCleanup() {
         combinedReport.totalDirectoriesScanned += report.totalDirectoriesScanned;
         combinedReport.totalFilesRenamed += report.totalFilesRenamed;
         combinedReport.unresolvedIssues.append(report.unresolvedIssues);
+        LogManager::instance()->logDirectoryCleaned(dir, report.totalFilesRenamed);
     }
 
     return combinedReport;

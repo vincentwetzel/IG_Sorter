@@ -1,7 +1,9 @@
 #include "ui/MainWindow.h"
 #include "utils/ConfigManager.h"
+#include "utils/LogManager.h"
 #include <QApplication>
 #include <QStyleHints>
+#include <QStandardPaths>
 #include <QFont>
 #include <QSettings>
 #include <QStyleFactory>
@@ -23,6 +25,10 @@ int main(int argc, char* argv[]) {
     // Set default font
     QFont defaultFont("Segoe UI", 11);
     app.setFont(defaultFont);
+
+    // Initialize log manager
+    QString logDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    LogManager::instance()->start(logDir);
 
     // Create and show main window
     MainWindow window;

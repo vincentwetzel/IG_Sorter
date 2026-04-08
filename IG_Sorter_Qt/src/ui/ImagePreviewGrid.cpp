@@ -1,4 +1,5 @@
 #include "ui/ImagePreviewGrid.h"
+#include "ui/ThumbnailWithLabel.h"
 #include "ui/ImageThumbnail.h"
 #include <QGridLayout>
 #include <QResizeEvent>
@@ -14,13 +15,13 @@ void ImagePreviewGrid::setImages(const QStringList& filePaths) {
     clear();
 
     for (const auto& filePath : filePaths) {
-        auto* thumb = new ImageThumbnail(filePath, this);
-        m_thumbnails.append(thumb);
+        auto* item = new ThumbnailWithLabel(filePath, this);
+        m_items.append(item);
 
-        connect(thumb, &ImageThumbnail::clicked, this, [this]() {
+        connect(item, &ThumbnailWithLabel::clicked, this, [this]() {
             int selectedCount = 0;
-            for (auto* t : m_thumbnails) {
-                if (t->isSelected()) selectedCount++;
+            for (auto* it : m_items) {
+                if (it->thumbnail()->isSelected()) selectedCount++;
             }
             emit selectionChanged(selectedCount);
         });
@@ -30,7 +31,7 @@ void ImagePreviewGrid::setImages(const QStringList& filePaths) {
 }
 
 void ImagePreviewGrid::rebuildGrid() {
-    if (m_thumbnails.isEmpty()) return;
+    if (m_items.isEmpty()) return;
 
     int availableWidth = width() - m_gridLayout->contentsMargins().left()
                        - m_gridLayout->contentsMargins().right();
@@ -40,25 +41,25 @@ void ImagePreviewGrid::rebuildGrid() {
     // Compute the average aspect ratio (width/height) across all images
     double avgAspect = 0.75;  // default portrait-ish
     double sumAspect = 0;
-    for (const auto* thumb : m_thumbnails) {
-        QSize imgSize = thumb->imageDimensions();
+    for (const auto* item : m_items) {
+        QSize imgSize = item->thumbnail()->imageDimensions();
         if (!imgSize.isNull() && imgSize.height() > 0) {
             sumAspect += (double)imgSize.width() / imgSize.height();
         }
     }
-    avgAspect = sumAspect / m_thumbnails.size();
+    avgAspect = sumAspect / m_items.size();
 
     // Pick a column count so thumbnails are reasonably large
     int desiredThumbWidth = 300;
     int cols = qMax(1, availableWidth / desiredThumbWidth);
-    cols = qMin(cols, m_thumbnails.size());
+    cols = qMin(cols, m_items.size());
 
     int cellWidth = (availableWidth - (cols - 1) * m_gridLayout->horizontalSpacing()) / cols;
     // Height is derived from cell width and average aspect ratio
     int cellHeight = qMax(80, (int)(cellWidth / avgAspect));
 
     // If the total height needed exceeds available, scale down
-    int rows = (m_thumbnails.size() + cols - 1) / cols;
+    int rows = (m_items.size() + cols - 1) / cols;
     int totalNeededHeight = rows * cellHeight + (rows - 1) * m_gridLayout->verticalSpacing();
     if (totalNeededHeight > availableHeight && availableHeight > 0) {
         double scale = (double)availableHeight / totalNeededHeight;
@@ -69,8 +70,8 @@ void ImagePreviewGrid::rebuildGrid() {
     m_cols = cols;
 
     // Clear existing grid items
-    for (int i = m_thumbnails.size() - 1; i >= 0; --i) {
-        m_gridLayout->removeWidget(m_thumbnails[i]);
+    for (int i = m_items.size() - 1; i >= 0; --i) {
+        m_gridLayout->removeWidget(m_items[i]);
     }
 
     // Reset all row/column properties
@@ -84,7 +85,7 @@ void ImagePreviewGrid::rebuildGrid() {
     }
 
     // Apply minimum sizes
-    rows = (m_thumbnails.size() + cols - 1) / cols;
+    rows = (m_items.size() + cols - 1) / cols;
     for (int r = 0; r < rows; ++r) {
         m_gridLayout->setRowMinimumHeight(r, cellHeight);
     }
@@ -92,12 +93,12 @@ void ImagePreviewGrid::rebuildGrid() {
         m_gridLayout->setColumnMinimumWidth(c, cellWidth);
     }
 
-    // Add thumbnails back
-    for (int i = 0; i < m_thumbnails.size(); ++i) {
+    // Add items back and notify of cell size
+    for (int i = 0; i < m_items.size(); ++i) {
         int row = i / m_cols;
         int col = i % m_cols;
-        m_gridLayout->addWidget(m_thumbnails[i], row, col);
-        m_thumbnails[i]->setCellSize(cellSize);
+        m_gridLayout->addWidget(m_items[i], row, col);
+        m_items[i]->thumbnail()->setCellSize(cellSize);
     }
 }
 
@@ -108,26 +109,26 @@ void ImagePreviewGrid::resizeEvent(QResizeEvent* event) {
 
 QStringList ImagePreviewGrid::selectedFilePaths() const {
     QStringList selected;
-    for (const auto* thumb : m_thumbnails) {
-        if (thumb->isSelected()) {
-            selected.append(thumb->filePath());
+    for (const auto* item : m_items) {
+        if (item->thumbnail()->isSelected()) {
+            selected.append(item->filePath());
         }
     }
     return selected;
 }
 
 void ImagePreviewGrid::removeSelected() {
-    QList<ImageThumbnail*> toRemove;
-    for (auto* thumb : m_thumbnails) {
-        if (thumb->isSelected()) {
-            toRemove.append(thumb);
+    QList<ThumbnailWithLabel*> toRemove;
+    for (auto* item : m_items) {
+        if (item->thumbnail()->isSelected()) {
+            toRemove.append(item);
         }
     }
 
-    for (auto* thumb : toRemove) {
-        m_gridLayout->removeWidget(thumb);
-        thumb->deleteLater();
-        m_thumbnails.removeOne(thumb);
+    for (auto* item : toRemove) {
+        m_gridLayout->removeWidget(item);
+        item->deleteLater();
+        m_items.removeOne(item);
     }
 
     emit selectionChanged(0);
@@ -135,16 +136,16 @@ void ImagePreviewGrid::removeSelected() {
 }
 
 void ImagePreviewGrid::clear() {
-    for (auto* thumb : m_thumbnails) {
-        m_gridLayout->removeWidget(thumb);
-        thumb->deleteLater();
+    for (auto* item : m_items) {
+        m_gridLayout->removeWidget(item);
+        item->deleteLater();
     }
-    m_thumbnails.clear();
+    m_items.clear();
     m_cols = 0;
 }
 
 bool ImagePreviewGrid::hasImages() const {
-    return !m_thumbnails.isEmpty();
+    return !m_items.isEmpty();
 }
 
 void ImagePreviewGrid::setBatchInfo(const QString& current, const QString& total) {

@@ -23,6 +23,7 @@ set(SOURCES
     src/utils/ConfigManager.cpp
     src/utils/FileUtils.cpp
     src/utils/ThemeManager.cpp
+    src/utils/LogManager.cpp
     src/ui/MainWindow.cpp
     src/ui/MenuScreen.cpp
     src/ui/CleanupScreen.cpp
@@ -32,6 +33,9 @@ set(SOURCES
     src/ui/ImagePreviewGrid.cpp
     src/ui/ImageThumbnail.cpp
     src/ui/SortPanel.cpp
+    src/ui/ThumbnailWithLabel.cpp
+    src/ui/FlowLayout.cpp
+    src/ui/AddPersonDialog.cpp
 )
 
 set(HEADERS
@@ -44,6 +48,7 @@ set(HEADERS
     src/utils/ConfigManager.h
     src/utils/FileUtils.h
     src/utils/ThemeManager.h
+    src/utils/LogManager.h
     src/ui/MainWindow.h
     src/ui/MenuScreen.h
     src/ui/CleanupScreen.h
@@ -53,6 +58,9 @@ set(HEADERS
     src/ui/ImagePreviewGrid.h
     src/ui/ImageThumbnail.h
     src/ui/SortPanel.h
+    src/ui/ThumbnailWithLabel.h
+    src/ui/FlowLayout.h
+    src/ui/AddPersonDialog.h
 )
 
 # Resource file

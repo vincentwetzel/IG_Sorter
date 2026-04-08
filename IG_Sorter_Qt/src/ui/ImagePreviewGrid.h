@@ -5,7 +5,7 @@
 
 class QGridLayout;
 
-class ImageThumbnail;
+class ThumbnailWithLabel;
 
 class ImagePreviewGrid : public QWidget {
     Q_OBJECT
@@ -30,6 +30,6 @@ private:
     void rebuildGrid();
 
     QGridLayout*         m_gridLayout;
-    QList<ImageThumbnail*> m_thumbnails;
+    QList<ThumbnailWithLabel*> m_items;
     int               m_cols = 0;
 };

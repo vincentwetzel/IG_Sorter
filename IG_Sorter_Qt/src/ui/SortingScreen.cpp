@@ -1,6 +1,7 @@
 #include "ui/SortingScreen.h"
 #include "ui/ImagePreviewGrid.h"
 #include "ui/SortPanel.h"
+#include "ui/AddPersonDialog.h"
 #include "core/DatabaseManager.h"
 #include "core/SorterEngine.h"
 #include "utils/ConfigManager.h"
@@ -95,6 +96,7 @@ void SortingScreen::setOutputFolders(const QVector<OutputFolderConfig>& folders)
 
 void SortingScreen::setDatabaseManager(DatabaseManager* db) {
     m_db = db;
+    m_sortPanel->setDatabaseManager(db);
 }
 
 void SortingScreen::setEngine(SorterEngine* engine) {
@@ -167,6 +169,36 @@ void SortingScreen::handleSortToFolder(int folderIndex) {
             return;
         }
         irlName = m_sortPanel->getCuratorResolvedName();
+
+        // Check if this name exists in the database
+        if (m_db && !m_db->hasIrlName(irlName)) {
+            // Name not in DB — prompt user to add with optional account
+            AddPersonDialog dialog(irlName, this);
+            if (dialog.exec() == QDialog::Accepted) {
+                QString confirmedName = dialog.irlName();
+                if (confirmedName.isEmpty()) {
+                    QMessageBox::warning(this, "Empty Name",
+                        "A name is required to add this person.");
+                    return;
+                }
+                QString account = dialog.accountHandle();
+
+                // Add to database (personal type since this is the person's own identity)
+                if (!account.isEmpty()) {
+                    m_db->addEntry(account, confirmedName, AccountType::Personal);
+                } else {
+                    m_db->addEntry(QString(), confirmedName, AccountType::IrlOnly);
+                }
+                m_db->save();
+
+                // Refresh completer so the new name appears next time
+                m_sortPanel->setDatabaseManager(m_db);
+
+                irlName = confirmedName;
+            } else {
+                return;  // User cancelled
+            }
+        }
     }
 
     QString outputDir = m_outputFolders[folderIndex].path;

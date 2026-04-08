@@ -7,15 +7,26 @@
 #include <QPushButton>
 #include <QLineEdit>
 #include <QComboBox>
+#include <QCompleter>
+#include <QStringListModel>
+#include <QKeyEvent>
 #include <QDesktopServices>
 #include <QUrl>
 
 SortPanel::SortPanel(QWidget* parent)
-    : QWidget(parent), m_isKnown(true), m_accountType(AccountType::Personal)
+    : QWidget(parent), m_isKnown(true), m_accountType(AccountType::Personal),
+      m_db(nullptr)
 {
     m_mainLayout = new QVBoxLayout(this);
     m_mainLayout->setSpacing(10);
     m_mainLayout->setContentsMargins(10, 10, 10, 10);
+
+    // Name completer
+    m_completerModel = new QStringListModel(this);
+    m_completer = new QCompleter(m_completerModel, this);
+    m_completer->setCaseSensitivity(Qt::CaseInsensitive);
+    m_completer->setCompletionMode(QCompleter::PopupCompletion);
+    m_completer->setWrapAround(false);
 
     // Selected count
     m_selectedCountLabel = new QLabel("0 files selected", this);
@@ -68,7 +79,11 @@ SortPanel::SortPanel(QWidget* parent)
 
     m_unknownNameEdit = new QLineEdit(m_unknownAccountWidget);
     m_unknownNameEdit->setPlaceholderText("Enter IRL name...");
+    m_unknownNameEdit->setCompleter(m_completer);
     unknownLayout->addWidget(m_unknownNameEdit);
+
+    // Install event filter for Tab completion
+    m_unknownNameEdit->installEventFilter(this);
 
     m_unknownTypeCombo = new QComboBox(m_unknownAccountWidget);
     m_unknownTypeCombo->addItem("Personal");
@@ -114,6 +129,44 @@ SortPanel::SortPanel(QWidget* parent)
 void SortPanel::setOutputFolders(const QVector<OutputFolderConfig>& folders) {
     m_outputFolders = folders;
     rebuildFolderButtons();
+}
+
+void SortPanel::setDatabaseManager(DatabaseManager* db) {
+    m_db = db;
+    refreshCompleter();
+}
+
+void SortPanel::refreshCompleter() {
+    if (!m_db) {
+        m_completerModel->setStringList(QStringList());
+        return;
+    }
+
+    QStringList names;
+    for (const auto& entry : m_db->allEntries()) {
+        if (!entry.irlName.isEmpty() && !names.contains(entry.irlName, Qt::CaseInsensitive)) {
+            names.append(entry.irlName);
+        }
+    }
+    names.sort(Qt::CaseInsensitive);
+    m_completerModel->setStringList(names);
+}
+
+bool SortPanel::eventFilter(QObject* watched, QEvent* event) {
+    if (watched == m_unknownNameEdit && event->type() == QEvent::KeyPress) {
+        auto* keyEvent = static_cast<QKeyEvent*>(event);
+        if (keyEvent->key() == Qt::Key_Tab) {
+            // Accept the first completion if available
+            QStringListModel* model = qobject_cast<QStringListModel*>(m_completer->completionModel());
+            if (model && model->rowCount() > 0) {
+                // Pick the first match from the filtered completion model
+                m_unknownNameEdit->setText(model->stringList().first());
+                m_unknownNameEdit->setCursorPosition(m_unknownNameEdit->text().length());
+            }
+            return true;
+        }
+    }
+    return QWidget::eventFilter(watched, event);
 }
 
 void SortPanel::setAccountInfo(const QString& accountHandle,

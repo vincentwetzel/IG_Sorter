@@ -13,9 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Settings dialog**: Source folder, output folders (with duplicate detection and reorder via Move Up/Down buttons), database file, batch size, theme
 - **Clickable source folder link** on the startup menu to open in file explorer
 - **Directory cleanup phase**: Sequential file renumbering with safe two-phase rename, unknown name detection with inline resolution UI
-- **Batch image preview**: Aspect-ratio-aware grid layout, resizable thumbnails with selection, `KeepAspectRatio` rendering (no cropping)
-- **Sort panel**: Dynamic output folder buttons (centered, with padding), curator identification per-batch, validation requiring name entry before sorting
+- **Batch image preview**: Aspect-ratio-aware grid layout, resizable thumbnails with selection, `KeepAspectRatio` rendering (no cropping), per-file filename labels
+- **Sort panel**: Dynamic output folder buttons (centered, with padding), curator identification per-batch, IRL name autocomplete from database with Tab completion, validation requiring name entry before sorting
+- **New person dialog**: Prompts for optional Instagram account when entering an unknown name during curator sorting
 - **Progress tracking**: Determinate progress bars during cleanup with file count labels per directory
+- **Log cycling**: Rotating log files (max 5, 5 MB each) at `AppData/IG_Sorter/`, logging all file moves, deletes, renames, skips, and errors
 - **Configuration persistence**: `QSettings` (INI format) with immediate `sync()` on every write
 - `DatabaseManager`: JSON-based account database with Personal/Curator/IrlOnly types
 - `FileNameParser`: Regex-based Instaloader filename parsing
@@ -24,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `SorterEngine`: Orchestrates cleanup → grouping → sorting pipeline
 - `FileUtils`: Safe copy-then-rename file move with no-overwrite guarantee
 - `ThemeManager`: Light/Dark/System theme support via QSS stylesheets
+- `LogManager`: Centralized logging with rotation, file operation tracking, and console mirroring
 - FlowLayout utility for flexible widget layouts
 
 ### Changed

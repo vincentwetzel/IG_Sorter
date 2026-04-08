@@ -6,6 +6,9 @@
 #include <QList>
 #include "core/DatabaseManager.h"
 
+class QCompleter;
+class QStringListModel;
+
 class QVBoxLayout;
 class QHBoxLayout;
 class QLabel;
@@ -28,6 +31,8 @@ public:
     void clearSelections();
     void updateSelectedCount(int count);
 
+    void setDatabaseManager(DatabaseManager* db);
+
     // Check if curator name has been entered
     bool isCuratorNameResolved() const;
     QString getCuratorResolvedName() const;
@@ -40,8 +45,12 @@ signals:
     // For curator accounts — resolve who is in the photos (no DB change)
     void curatorResolvedName(const QString& irlName);
 
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
+
 private:
     void rebuildFolderButtons();
+    void refreshCompleter();
 
     QVBoxLayout*   m_mainLayout;
     QHBoxLayout*   m_folderButtonsLayout;
@@ -64,4 +73,7 @@ private:
     QString         m_irlName;
     bool            m_isKnown;
     AccountType     m_accountType;
+    DatabaseManager* m_db;
+    QCompleter*      m_completer;
+    QStringListModel* m_completerModel;
 };

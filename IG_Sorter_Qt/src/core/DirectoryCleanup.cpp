@@ -1,5 +1,6 @@
 #include "core/DirectoryCleanup.h"
 #include "core/DatabaseManager.h"
+#include "utils/LogManager.h"
 #include <QDir>
 #include <QDirIterator>
 #include <QFileInfo>
@@ -122,8 +123,8 @@ CleanupReport DirectoryCleanup::cleanupDirectoryInstance(const QString& dirPath)
                 if (QFile::exists(rename.second) && !QFile::remove(rename.second)) {
                     continue;
                 }
-                if (!QFile::rename(rename.first, rename.second)) {
-                    continue;
+                if (QFile::rename(rename.first, rename.second)) {
+                    LogManager::instance()->logFileRenamed(rename.first, rename.second);
                 }
             }
 
@@ -139,6 +140,7 @@ CleanupReport DirectoryCleanup::cleanupDirectoryInstance(const QString& dirPath)
                 }
                 if (QFile::rename(tempRenames[i].second, finalPath)) {
                     report.totalFilesRenamed++;
+                    LogManager::instance()->logFileRenamed(tempRenames[i].second, finalPath);
                     emit fileRenamed(tempRenames[i].first, finalPath);
                 }
 
@@ -259,9 +261,8 @@ CleanupReport DirectoryCleanup::cleanupDirectory(const QString& dirPath, Databas
                     // Could not remove stale temp file — skip this rename
                     continue;
                 }
-                if (!QFile::rename(rename.first, rename.second)) {
-                    // Rename failed — log and continue
-                    continue;
+                if (QFile::rename(rename.first, rename.second)) {
+                    LogManager::instance()->logFileRenamed(rename.first, rename.second);
                 }
             }
 
@@ -278,6 +279,7 @@ CleanupReport DirectoryCleanup::cleanupDirectory(const QString& dirPath, Databas
                 }
                 if (QFile::rename(tempRenames[i].second, finalPath)) {
                     report.totalFilesRenamed++;
+                    LogManager::instance()->logFileRenamed(tempRenames[i].second, finalPath);
                 }
 
                 expectedNum++;
