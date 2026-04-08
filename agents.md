@@ -6,7 +6,7 @@ In the context of the **IG_Sorter** project, "agents" refer to the automated Pyt
 This is the primary agent responsible for the following tasks:
 - **File Discovery**: Scans the "NEED TO SORT" directories.
 - **Identity Resolution**: Analyzes file names using regular expressions to determine the source of the image (Instagram, Twitter, Screenshot, etc.) and extracts the user's handle.
-- **Database Lookup**: Consults the `ig_people.xlsx` database and `photographers.txt` to map Instagram handles to real names.
+- **Database Lookup**: Consults the `ig_people.xlsx` database to map Instagram handles to real names.
 - **File Operations**: Renames files to a standardized format (`Real Name X.ext`) and moves them to the appropriate destination directory (`SFW`, `MSFW`, `NSFW`).
 - **Interactive Error Handling**: When an unknown user is encountered, the agent prompts the user via the console, opening web browsers and file explorers to facilitate manual identification.
 

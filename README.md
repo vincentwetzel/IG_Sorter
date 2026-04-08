@@ -25,7 +25,6 @@ A modern cross-platform GUI application that replaces the CLI Python sorter. Fea
 - `Find_Duplicate_Files.py`: Duplicate detection.
 - `instaloader_downloader.py`: Downloading script with Firefox session cookie importer for Instaloader.
 - `ig_people.xlsx` (Data file - not included by default): An Excel spreadsheet mapping Instagram accounts to real names. Requires columns `Account` and `Name`.
-- `photographers.txt`: A text file containing a list of known photographer Instagram accounts.
 - `run_IG_Sorter.bat`: A batch file to run the main sorting script.
 
 ## Dependencies
