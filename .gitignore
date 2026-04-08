@@ -2,7 +2,11 @@
 settings.ini
 ig_people.xlsx
 ig_people.json
-/photographers.txt
+photographers.txt
+
+# Download history
+download_history.db
+download_history.json
 
 # Downloaded content
 vincentwetzel/
@@ -20,10 +24,25 @@ vincentwetzel/
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
 venv/
 .env
+*.egg-info/
+dist/
+build/
 
 # OS
 .DS_Store
 Thumbs.db
-photographers.txt
+desktop.ini
+
+# Temporary files
+*.tmp
+*.log
+*.bak
+*.swp
+*.swo
+*~
+
+# Jupyter notebooks checkpoints
+.ipynb_checkpoints/

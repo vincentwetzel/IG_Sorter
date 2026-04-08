@@ -2,6 +2,7 @@
 #include "utils/ConfigManager.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QLayoutItem>
 #include <QLabel>
 #include <QPushButton>
 #include <QLineEdit>
@@ -26,7 +27,8 @@ SortPanel::SortPanel(QWidget* parent)
 
     // Folder buttons
     m_folderButtonsLayout = new QHBoxLayout();
-    m_folderButtonsLayout->setSpacing(10);
+    m_folderButtonsLayout->setSpacing(20);
+    m_folderButtonsLayout->addStretch();
     m_mainLayout->addLayout(m_folderButtonsLayout);
 
     // Skip button
@@ -40,14 +42,21 @@ SortPanel::SortPanel(QWidget* parent)
     connect(m_skipButton, &QPushButton::clicked,
             this, &SortPanel::skipClicked);
 
-    // IRL name display
+    // IRL name display row (label + Open Instagram button)
+    auto* irlRowLayout = new QHBoxLayout();
+    irlRowLayout->setSpacing(10);
     m_irlNameLabel = new QLabel(this);
     m_irlNameLabel->setAlignment(Qt::AlignCenter);
     QFont irlFont = m_irlNameLabel->font();
     irlFont.setPointSize(16);
     irlFont.setBold(true);
     m_irlNameLabel->setFont(irlFont);
-    m_mainLayout->addWidget(m_irlNameLabel);
+    irlRowLayout->addWidget(m_irlNameLabel, 1);
+
+    m_openInstagramButton = new QPushButton("Open Instagram", this);
+    irlRowLayout->addWidget(m_openInstagramButton);
+    m_openInstagramButton->hide();
+    m_mainLayout->addLayout(irlRowLayout);
 
     // Unknown account widget
     m_unknownAccountWidget = new QWidget(this);
@@ -69,9 +78,6 @@ SortPanel::SortPanel(QWidget* parent)
 
     m_unknownAddButton = new QPushButton("Add", m_unknownAccountWidget);
     unknownLayout->addWidget(m_unknownAddButton);
-
-    m_openInstagramButton = new QPushButton("Open Instagram", m_unknownAccountWidget);
-    unknownLayout->addWidget(m_openInstagramButton);
 
     m_mainLayout->addWidget(m_unknownAccountWidget);
 
@@ -134,6 +140,7 @@ void SortPanel::setAccountInfo(const QString& accountHandle,
         // Personal account with known name — no identification needed
         m_irlNameLabel->setText(irlName);
         m_unknownAccountWidget->hide();
+        m_openInstagramButton->hide();
     } else {
         // Unknown personal account — user must add to database
         m_irlNameLabel->setText("Unknown account: " + accountHandle);
@@ -144,9 +151,8 @@ void SortPanel::setAccountInfo(const QString& accountHandle,
         m_unknownTypeCombo->show();
         m_unknownAddButton->setText("Add");
         m_unknownAddButton->setObjectName("");
+        m_openInstagramButton->show();
     }
-
-    m_openInstagramButton->setVisible(type == AccountType::Curator || !isKnown);
 }
 
 void SortPanel::clearSelections() {
@@ -160,12 +166,31 @@ void SortPanel::updateSelectedCount(int count) {
     m_selectedCountLabel->setText(QString("%1 files selected").arg(count));
 }
 
+bool SortPanel::isCuratorNameResolved() const {
+    return m_accountType == AccountType::Curator && !m_unknownNameEdit->text().trimmed().isEmpty();
+}
+
+QString SortPanel::getCuratorResolvedName() const {
+    return m_unknownNameEdit->text().trimmed();
+}
+
 void SortPanel::rebuildFolderButtons() {
     // Clear existing buttons
     for (auto* btn : m_folderButtons) {
         delete btn;
     }
     m_folderButtons.clear();
+
+    // Clear existing stretches from the layout
+    for (int i = m_folderButtonsLayout->count() - 1; i >= 0; --i) {
+        QLayoutItem* item = m_folderButtonsLayout->itemAt(i);
+        if (item && !item->widget()) {
+            // It's a stretch or spacer
+            delete m_folderButtonsLayout->takeAt(i);
+        }
+    }
+
+    m_folderButtonsLayout->addStretch();
 
     for (int i = 0; i < m_outputFolders.size(); ++i) {
         auto* btn = new QPushButton(m_outputFolders[i].name, this);

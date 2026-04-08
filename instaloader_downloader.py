@@ -5,7 +5,7 @@ import json
 import subprocess
 import urllib.request
 import urllib.error
-from typing import Optional
+from typing import Optional, Set
 from datetime import datetime
 from glob import glob
 from os.path import expanduser
@@ -25,6 +25,57 @@ def timestamp() -> str:
 def log(message: str) -> None:
     """Print a message prefixed with timestamp."""
     print(f"[{timestamp()}] {message}")
+
+
+def init_history_db(filepath: str) -> None:
+    """Initialize SQLite database with the download history table.
+
+    Args:
+        filepath: Path to the SQLite database file.
+    """
+    conn = connect(filepath)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS downloaded_posts ("
+        "shortcode TEXT PRIMARY KEY, "
+        "downloaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+        ")"
+    )
+    conn.commit()
+    conn.close()
+
+
+def load_downloaded_shortcodes_db(filepath: str) -> Set[str]:
+    """Load set of already-downloaded post shortcodes from SQLite database.
+
+    Args:
+        filepath: Path to the SQLite database file.
+
+    Returns:
+        Set of post shortcodes that have been downloaded.
+    """
+    conn = connect(filepath)
+    cursor = conn.execute("SELECT shortcode FROM downloaded_posts")
+    shortcodes: Set[str] = {row[0] for row in cursor.fetchall()}
+    conn.close()
+    return shortcodes
+
+
+def save_downloaded_shortcode_db(filepath: str, shortcode: str) -> None:
+    """Save a single downloaded post shortcode to SQLite database.
+
+    Uses INSERT OR IGNORE to avoid duplicates and ensure idempotency.
+
+    Args:
+        filepath: Path to the SQLite database file.
+        shortcode: The post shortcode to save.
+    """
+    conn = connect(filepath)
+    conn.execute(
+        "INSERT OR IGNORE INTO downloaded_posts (shortcode) VALUES (?)",
+        (shortcode,)
+    )
+    conn.commit()
+    conn.close()
 
 
 def check_instaloader_version() -> None:
@@ -260,9 +311,15 @@ for remaining in range(initial_delay, 0, -10):
 if initial_delay % 10 != 0:
     time.sleep(initial_delay % 10)
 
+# Load download history for resuming across sessions
+shortcodes_file: str = "download_history.db"
+init_history_db(shortcodes_file)
+downloaded_shortcodes: Set[str] = load_downloaded_shortcodes_db(shortcodes_file)
+
 # Download saved posts
 log("Retrieving saved posts...")
 download_count: int = 0
+skip_count: int = 0
 download_errors: int = 0
 error_details: list[str] = []
 try:
@@ -272,12 +329,20 @@ try:
     posts = profile.get_saved_posts()
     total_posts_available: int = sum(1 for _ in posts)
     posts = profile.get_saved_posts()  # Re-fetch since generator is exhausted
-    
+
     log(f"Found {total_posts_available} saved posts to download.")
+    log(f"Already downloaded: {len(downloaded_shortcodes)}")
+    remaining_total: int = total_posts_available - len(downloaded_shortcodes)
+    log(f"Remaining to download: {remaining_total}")
     log(f"Session limit: {max_posts if max_posts else 'unlimited'}")
     log("-" * 60)
-    
+
+    posts_to_download: int = 0
     for i, post in enumerate(posts):
+        if post.shortcode in downloaded_shortcodes:
+            skip_count += 1
+            continue
+        posts_to_download += 1
         if max_posts is not None and download_count >= max_posts:
             log(
                 f"Reached maximum post limit ({max_posts}). "
@@ -286,12 +351,20 @@ try:
             break
         try:
             post_timestamp: str = timestamp()
-            log(f"[{post_timestamp}] Downloading post {i + 1}/{total_posts_available}...")
+            log(f"[{post_timestamp}] Downloading post {posts_to_download}/{remaining_total}...")
             L.download_post(post, target=ig_name)
             download_count += 1
+            downloaded_shortcodes.add(post.shortcode)
+            save_downloaded_shortcode_db(shortcodes_file, post.shortcode)
+            # Construct expected filename based on filename_pattern
+            ext: str = "mp4" if post.is_video else "jpg"
+            expected_filename: str = (
+                f"{ig_name}/{ig_name}_"
+                f"{post.date_utc.strftime('%Y-%m-%d_%H-%M-%S')}.{ext}"
+            )
             max_display: str = str(max_posts) if max_posts else "∞"
             log(
-                f"[{post_timestamp}] ✓ Downloaded post {i + 1} "
+                f"[{post_timestamp}] ✓ Downloaded {expected_filename} "
                 f"({download_count}/{max_display} this session)"
             )
         except Exception as post_error:
@@ -299,7 +372,7 @@ try:
             error_msg: str = f"Post {i + 1}: {post_error}"
             error_details.append(error_msg)
             log(f"[{timestamp()}] ✗ Error downloading post {i + 1}: {post_error}")
-        
+
         delay: int = random.randint(60, 120)
         log(f"  Next download in {delay} seconds...")
         for remaining in range(delay, 0, -10):
@@ -331,6 +404,7 @@ log(f"  Session started:      {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
 log(f"  Session ended:        {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
 log(f"  Total duration:       {minutes}m {seconds}s")
 log(f"  Posts found:          {total_posts_available if 'total_posts_available' in locals() else 'unknown'}")
+log(f"  Posts skipped:        {skip_count} (already downloaded)")
 log(f"  Posts downloaded:     {download_count}")
 log(f"  Errors encountered:   {download_errors}")
 if error_details:
@@ -338,6 +412,7 @@ if error_details:
     for detail in error_details:
         log(f"    - {detail}")
 log(f"  Session limit set:    {max_posts if max_posts else 'unlimited'}")
+log(f"  Tracking file:        {shortcodes_file}")
 log("=" * 60)
 
 L.save_session_to_file()

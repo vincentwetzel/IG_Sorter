@@ -13,9 +13,9 @@ QList<FileGroup> FileGrouper::group(const QString& sourceDir) {
     QList<FileGroup> groups;
     QHash<QString, int> groupIndex;  // key -> index in groups
 
-    // Image file extensions to process
+    // Image file extensions to process (without dot, as QFileInfo::suffix() returns extension without dot)
     static const QSet<QString> imageExtensions = {
-        ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff", ".tif", ".svg", ".ico"
+        "jpg", "jpeg", "png", "gif", "bmp", "webp", "tiff", "tif", "svg", "ico"
     };
 
     // Count total files first (filtered by image types)

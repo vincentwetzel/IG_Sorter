@@ -23,7 +23,13 @@ public:
 signals:
     void selectionChanged(int selectedCount);
 
+protected:
+    void resizeEvent(QResizeEvent* event) override;
+
 private:
-    QGridLayout*      m_gridLayout;
+    void rebuildGrid();
+
+    QGridLayout*         m_gridLayout;
     QList<ImageThumbnail*> m_thumbnails;
+    int               m_cols = 0;
 };

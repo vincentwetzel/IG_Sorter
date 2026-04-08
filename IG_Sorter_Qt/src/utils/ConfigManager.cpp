@@ -22,10 +22,12 @@ QString ConfigManager::sourceFolder() const {
 void ConfigManager::setSourceFolder(const QString& path) {
     QSettings settings;
     settings.setValue("SourceFolder", path);
+    settings.sync();
 }
 
 QVector<OutputFolderConfig> ConfigManager::outputFolders() const {
     QSettings settings;
+    settings.sync();
     int size = settings.beginReadArray("OutputFolders");
     QVector<OutputFolderConfig> folders;
     for (int i = 0; i < size; ++i) {
@@ -48,6 +50,7 @@ void ConfigManager::setOutputFolders(const QVector<OutputFolderConfig>& folders)
         settings.setValue("Path", folders[i].path);
     }
     settings.endArray();
+    settings.sync();
 }
 
 void ConfigManager::addOutputFolder(const QString& name, const QString& path) {
@@ -75,29 +78,37 @@ QString ConfigManager::databaseFile() const {
 void ConfigManager::setDatabaseFile(const QString& path) {
     QSettings settings;
     settings.setValue("DatabaseFile", path);
+    settings.sync();
 }
 
 int ConfigManager::batchSize() const {
     QSettings settings;
+    settings.sync();
     return settings.value("BatchSize", 5).toInt();
 }
 
 void ConfigManager::setBatchSize(int size) {
     QSettings settings;
     settings.setValue("BatchSize", size);
+    settings.sync();
 }
 
 QString ConfigManager::theme() const {
     QSettings settings;
+    settings.sync();
     return settings.value("Theme", "system").toString();
 }
 
 void ConfigManager::setTheme(const QString& theme) {
     QSettings settings;
     settings.setValue("Theme", theme);
+    settings.sync();
 }
 
 void ConfigManager::save() {
     QSettings settings;
     settings.sync();
+    if (settings.status() != QSettings::NoError) {
+        qWarning("ConfigManager::save() - QSettings error: %d", settings.status());
+    }
 }

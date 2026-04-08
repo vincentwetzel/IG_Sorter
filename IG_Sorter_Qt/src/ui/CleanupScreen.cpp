@@ -98,11 +98,16 @@ CleanupScreen::CleanupScreen(QWidget* parent)
 }
 
 void CleanupScreen::setDirectories(const QStringList& dirs) {
-    // Remove existing progress bars
+    // Remove existing progress bars and labels
     for (auto* bar : m_progressBars) {
         delete bar;
     }
+    for (auto* label : m_progressLabels) {
+        delete label;
+    }
     m_progressBars.clear();
+    m_progressLabels.clear();
+    m_progressTotals.clear();
 
     // Clear resolution fields
     for (auto* label : m_resolutionWidget->findChildren<QLabel*>()) {
@@ -112,12 +117,17 @@ void CleanupScreen::setDirectories(const QStringList& dirs) {
     }
 
     for (const auto& dir : dirs) {
-        auto* label = new QLabel(dir, this);
+        auto* pathLabel = new QLabel(dir, this);
+        auto* statusLabel = new QLabel("0 / 0 files scanned", this);
         auto* bar = new QProgressBar(this);
-        bar->setRange(0, 0);  // Indeterminate
-        m_layout->insertWidget(m_layout->count() - 2, label);
+        bar->setRange(0, 100);  // Determinate mode (0-100%)
+        bar->setValue(0);
+        m_layout->insertWidget(m_layout->count() - 2, pathLabel);
+        m_layout->insertWidget(m_layout->count() - 2, statusLabel);
         m_layout->insertWidget(m_layout->count() - 2, bar);
         m_progressBars[dir] = bar;
+        m_progressLabels[dir] = statusLabel;
+        m_progressTotals[dir] = 0;  // Will be set on first progress update
     }
 
     m_continueButton->setEnabled(false);
@@ -127,8 +137,9 @@ void CleanupScreen::setDirectories(const QStringList& dirs) {
 
 void CleanupScreen::updateDirectoryProgress(const QString& dir, int current, int total) {
     if (m_progressBars.contains(dir)) {
-        int percent = total > 0 ? (current * 100) / total : 0;
+        int percent = total > 0 ? (current * 100) / total : 100;
         m_progressBars[dir]->setValue(percent);
+        m_progressLabels[dir]->setText(QString("%1 / %2 files scanned").arg(current).arg(total));
     }
 }
 

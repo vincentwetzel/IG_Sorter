@@ -159,6 +159,16 @@ void SortingScreen::handleSortToFolder(int folderIndex) {
         return;
     }
 
+    // For curator accounts, require the user to enter who is in the photos
+    if (group.accountType == AccountType::Curator) {
+        if (!m_sortPanel->isCuratorNameResolved()) {
+            QMessageBox::information(this, "Missing Name",
+                "Please enter who is in these photos before sorting.");
+            return;
+        }
+        irlName = m_sortPanel->getCuratorResolvedName();
+    }
+
     QString outputDir = m_outputFolders[folderIndex].path;
 
     if (m_engine) {

@@ -22,4 +22,7 @@ private:
     QLabel*     m_configStatusLabel;
     QPushButton* m_startButton;
     QPushButton* m_settingsButton;
+
+private slots:
+    void openSourceFolder();
 };

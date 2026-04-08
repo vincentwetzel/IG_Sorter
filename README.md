@@ -1,16 +1,27 @@
 # IG_Sorter
 
-IG_Sorter is a set of Python scripts designed to manage, sort, and rename image files downloaded from Instagram or other sources, keeping them organized into specific folders.
+IG_Sorter is a set of Python scripts and a Qt C++ desktop application designed to manage, sort, and rename image files downloaded from Instagram or other sources, keeping them organized into specific folders.
 
 ## Features
 
+### Qt C++ Desktop App (`IG_Sorter_Qt/`)
+A modern cross-platform GUI application that replaces the CLI Python sorter. Features include:
+- Multi-screen workflow: Menu → Directory Cleanup → Batch Sorting → Report
+- Aspect-ratio-aware image preview grid with selection and batch assignment
+- Settings for source folder, output folders (with duplicate detection and reordering), database file, batch size, and theme
+- Two-phase safe file renaming to fix numbering gaps in output directories
+- JSON-based account database with Personal, Curator, and IRL-Only entry types
+- Real-time progress tracking during cleanup with per-directory file counts
+
+### Python Scripts
 - **Instagram_Sorter.py**: The main script. Sorts and renames newly downloaded image files (from Instagram, screenshots, Twitter, etc.) into appropriate folders based on the content creator's real name or Instagram handle, mapped through an Excel database (`ig_people.xlsx`). It also checks and fixes file numbering for existing files.
 - **Find_Duplicate_Files.py**: Searches specific image directories (`SFW`, `MSFW`, `NSFW`) for duplicate files based on file size and similar beginnings of file names.
 - **instaloader_downloader.py**: A script to download posts that includes utility functionality to import Instagram session cookies directly from Firefox, bypassing potential `Instaloader` login and authorization issues.
 
 ## Project Structure
 
-- `Instagram_Sorter.py`: Main sorting logic.
+- `IG_Sorter_Qt/`: Qt 6 C++ desktop application (CMake-based)
+- `Instagram_Sorter.py`: Main sorting logic (Python CLI).
 - `Find_Duplicate_Files.py`: Duplicate detection.
 - `instaloader_downloader.py`: Downloading script with Firefox session cookie importer for Instaloader.
 - `ig_people.xlsx` (Data file - not included by default): An Excel spreadsheet mapping Instagram accounts to real names. Requires columns `Account` and `Name`.

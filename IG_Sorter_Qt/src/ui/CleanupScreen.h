@@ -30,6 +30,8 @@ private:
     QLabel*              m_titleLabel;
     QLabel*              m_statusLabel;
     QMap<QString, QProgressBar*> m_progressBars;
+    QMap<QString, QLabel*> m_progressLabels;
+    QMap<QString, int>   m_progressTotals;  // Total files per directory
 
     // Unknown names resolution area
     QWidget*             m_resolutionWidget;

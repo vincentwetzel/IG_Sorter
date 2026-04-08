@@ -5,6 +5,8 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QFileInfo>
+#include <QDesktopServices>
+#include <QUrl>
 
 MenuScreen::MenuScreen(QWidget* parent)
     : QWidget(parent)
@@ -41,6 +43,8 @@ MenuScreen::MenuScreen(QWidget* parent)
     // Config status
     m_configStatusLabel = new QLabel(this);
     m_configStatusLabel->setAlignment(Qt::AlignCenter);
+    m_configStatusLabel->setTextFormat(Qt::RichText);
+    m_configStatusLabel->setTextInteractionFlags(Qt::TextBrowserInteraction);
     QFont configFont = m_configStatusLabel->font();
     configFont.setPointSize(11);
     m_configStatusLabel->setFont(configFont);
@@ -78,6 +82,8 @@ MenuScreen::MenuScreen(QWidget* parent)
             this, &MenuScreen::startSortingClicked);
     connect(m_settingsButton, &QPushButton::clicked,
             this, &MenuScreen::settingsClicked);
+    connect(m_configStatusLabel, &QLabel::linkActivated,
+            this, &MenuScreen::openSourceFolder);
 }
 
 void MenuScreen::refreshConfigStatus() {
@@ -86,7 +92,15 @@ void MenuScreen::refreshConfigStatus() {
     if (sourceFolder.isEmpty() || !QFileInfo::exists(sourceFolder)) {
         statusText = "⚠ No source folder configured. Click Settings to begin.";
     } else {
-        statusText = QString("Source: %1").arg(sourceFolder);
+        statusText = QString("Source: <a href=\"open://%1\">%2</a>")
+                         .arg(sourceFolder, sourceFolder);
     }
     m_configStatusLabel->setText(statusText);
+}
+
+void MenuScreen::openSourceFolder() {
+    QString sourceFolder = ConfigManager::instance()->sourceFolder();
+    if (!sourceFolder.isEmpty() && QFileInfo::exists(sourceFolder)) {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(sourceFolder));
+    }
 }

@@ -1,8 +1,6 @@
 #include "core/SorterEngine.h"
 #include "core/DatabaseManager.h"
 #include "utils/FileUtils.h"
-#include <QtConcurrent>
-#include <QFutureSynchronizer>
 #include <QDir>
 
 SorterEngine::SorterEngine(DatabaseManager* db, QObject* parent)
@@ -32,33 +30,23 @@ bool SorterEngine::initialize(const QString& sourceDir, const QStringList& outpu
 CleanupReport SorterEngine::runCleanup() {
     CleanupReport combinedReport;
 
-    QFutureSynchronizer<CleanupReport> sync;
-    // Map each dir to its index so we can correlate results
-    QVector<QString> dirList = m_outputDirs;
+    for (int i = 0; i < m_outputDirs.size(); ++i) {
+        const QString& dir = m_outputDirs[i];
 
-    for (int i = 0; i < dirList.size(); ++i) {
-        QString dir = dirList[i];
-        // Create a DirectoryCleanup instance on the heap so signals work
+        // Create a DirectoryCleanup instance and run it synchronously
+        // (runCleanup itself runs in a background thread via QFutureWatcher)
         auto* cleanup = new DirectoryCleanup(m_db);
-        // Capture via queued connection for thread safety
+
+        // Connect progress signal before running
         QObject::connect(cleanup, &DirectoryCleanup::directoryProgress,
                          this, [this, dir](const QString& d, int current, int total) {
             Q_UNUSED(d);
             emit cleanupProgress(dir, current, total);
-        }, Qt::QueuedConnection);
+        }, Qt::DirectConnection);
 
-        auto future = QtConcurrent::run([cleanup, dir]() {
-            CleanupReport result = cleanup->run(dir);
-            cleanup->deleteLater();
-            return result;
-        });
-        sync.addFuture(future);
-    }
+        CleanupReport report = cleanup->run(dir);
+        cleanup->deleteLater();
 
-    sync.waitForFinished();
-
-    for (const auto& future : sync.futures()) {
-        CleanupReport report = future.result();
         combinedReport.totalDirectoriesScanned += report.totalDirectoriesScanned;
         combinedReport.totalFilesRenamed += report.totalFilesRenamed;
         combinedReport.unresolvedIssues.append(report.unresolvedIssues);

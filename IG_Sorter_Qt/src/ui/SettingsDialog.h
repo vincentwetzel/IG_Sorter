@@ -22,6 +22,7 @@ public:
 private:
     void setupUI();
     void saveSettings();
+    bool isDuplicateFolder(const QString& path) const;
 
     QVBoxLayout*   m_layout;
     QLineEdit*     m_sourceFolderEdit;
@@ -29,6 +30,8 @@ private:
     QTableWidget*  m_outputFoldersTable;
     QPushButton*   m_addFolderButton;
     QPushButton*   m_removeFolderButton;
+    QPushButton*   m_moveUpButton;
+    QPushButton*   m_moveDownButton;
     QLineEdit*     m_databaseFileEdit;
     QPushButton*   m_databaseBrowseButton;
     QSpinBox*      m_batchSizeSpin;

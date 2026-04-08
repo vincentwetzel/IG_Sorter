@@ -28,6 +28,10 @@ public:
     void clearSelections();
     void updateSelectedCount(int count);
 
+    // Check if curator name has been entered
+    bool isCuratorNameResolved() const;
+    QString getCuratorResolvedName() const;
+
 signals:
     void sortToFolderClicked(int folderIndex);
     void skipClicked();

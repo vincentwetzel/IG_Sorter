@@ -12,6 +12,7 @@
 #include <QComboBox>
 #include <QFileDialog>
 #include <QLabel>
+#include <QMessageBox>
 
 SettingsDialog::SettingsDialog(QWidget* parent)
     : QDialog(parent)
@@ -54,14 +55,25 @@ void SettingsDialog::setupUI() {
     auto* folderButtonLayout = new QHBoxLayout();
     m_addFolderButton = new QPushButton("Add", this);
     m_removeFolderButton = new QPushButton("Remove", this);
+    m_moveUpButton = new QPushButton("Move Up", this);
+    m_moveDownButton = new QPushButton("Move Down", this);
     folderButtonLayout->addWidget(m_addFolderButton);
     folderButtonLayout->addWidget(m_removeFolderButton);
+    folderButtonLayout->addWidget(m_moveUpButton);
+    folderButtonLayout->addWidget(m_moveDownButton);
     folderButtonLayout->addStretch();
     m_layout->addLayout(folderButtonLayout);
 
     connect(m_addFolderButton, &QPushButton::clicked, this, [this]() {
         QString dir = QFileDialog::getExistingDirectory(this, "Select Output Folder");
         if (!dir.isEmpty()) {
+            // Check for duplicate path
+            if (isDuplicateFolder(dir)) {
+                QMessageBox::warning(this, "Duplicate Folder",
+                    "This output folder has already been added.");
+                return;
+            }
+
             int row = m_outputFoldersTable->rowCount();
             m_outputFoldersTable->insertRow(row);
 
@@ -75,6 +87,36 @@ void SettingsDialog::setupUI() {
         int row = m_outputFoldersTable->currentRow();
         if (row >= 0) {
             m_outputFoldersTable->removeRow(row);
+        }
+    });
+
+    connect(m_moveUpButton, &QPushButton::clicked, this, [this]() {
+        int row = m_outputFoldersTable->currentRow();
+        if (row > 0) {
+            m_outputFoldersTable->insertRow(row - 1);
+            for (int col = 0; col < m_outputFoldersTable->columnCount(); ++col) {
+                if (m_outputFoldersTable->item(row + 1, col)) {
+                    m_outputFoldersTable->setItem(row - 1, col,
+                        m_outputFoldersTable->item(row + 1, col)->clone());
+                }
+            }
+            m_outputFoldersTable->removeRow(row + 1);
+            m_outputFoldersTable->setCurrentCell(row - 1, 0);
+        }
+    });
+
+    connect(m_moveDownButton, &QPushButton::clicked, this, [this]() {
+        int row = m_outputFoldersTable->currentRow();
+        if (row >= 0 && row < m_outputFoldersTable->rowCount() - 1) {
+            m_outputFoldersTable->insertRow(row + 2);
+            for (int col = 0; col < m_outputFoldersTable->columnCount(); ++col) {
+                if (m_outputFoldersTable->item(row, col)) {
+                    m_outputFoldersTable->setItem(row + 2, col,
+                        m_outputFoldersTable->item(row, col)->clone());
+                }
+            }
+            m_outputFoldersTable->removeRow(row);
+            m_outputFoldersTable->setCurrentCell(row + 1, 0);
         }
     });
 
@@ -134,6 +176,19 @@ void SettingsDialog::setupUI() {
         accept();
     });
     connect(m_cancelButton, &QPushButton::clicked, this, &QDialog::reject);
+}
+
+bool SettingsDialog::isDuplicateFolder(const QString& path) const {
+    for (int i = 0; i < m_outputFoldersTable->rowCount(); ++i) {
+        if (m_outputFoldersTable->item(i, 1)) {
+            QString existingPath = m_outputFoldersTable->item(i, 1)->text();
+            // Case-insensitive comparison on Windows
+            if (existingPath.compare(path, Qt::CaseInsensitive) == 0) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 void SettingsDialog::loadSettings() {
