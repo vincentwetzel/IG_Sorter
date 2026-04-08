@@ -72,7 +72,8 @@ void ConfigManager::removeOutputFolder(int index) {
 
 QString ConfigManager::databaseFile() const {
     QSettings settings;
-    return settings.value("DatabaseFile", "").toString();
+    QString path = settings.value("DatabaseFile", "private-data/ig_people.json").toString();
+    return path;
 }
 
 void ConfigManager::setDatabaseFile(const QString& path) {

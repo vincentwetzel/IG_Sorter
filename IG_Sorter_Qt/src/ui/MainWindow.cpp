@@ -14,6 +14,7 @@
 #include <QStackedWidget>
 #include <QStatusBar>
 #include <QApplication>
+#include <QCoreApplication>
 #include <QFileInfo>
 #include <QDir>
 #include <QFile>
@@ -33,6 +34,12 @@ MainWindow::MainWindow(QWidget* parent)
 
     // Database
     QString dbPath = ConfigManager::instance()->databaseFile();
+    // Resolve relative paths relative to the application directory
+    QFileInfo dbInfo(dbPath);
+    if (!dbInfo.isAbsolute()) {
+        QString appDir = QCoreApplication::applicationDirPath();
+        dbPath = QDir(appDir).filePath(dbPath);
+    }
     m_db = new DatabaseManager(dbPath, this);
     // Attempt to load at startup; warn only if file exists but fails to load
     if (!dbPath.isEmpty() && !m_db->load()) {
