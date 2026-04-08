@@ -4,7 +4,6 @@
 #include <QString>
 #include <QDateTime>
 #include <QFile>
-#include <QTextStream>
 #include <QMutex>
 
 enum class LogLevel {
@@ -54,7 +53,6 @@ private:
     QString        m_logDir;
     QString        m_currentLogPath;
     QFile          m_logFile;
-    QTextStream    m_logStream;
     QMutex         m_mutex;
     int            m_maxBytes;
 };

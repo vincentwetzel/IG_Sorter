@@ -2,7 +2,6 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QDateTime>
-#include <QTextStream>
 #include <QtDebug>
 
 LogManager* LogManager::s_instance = nullptr;
@@ -38,7 +37,7 @@ void LogManager::start(const QString& logDir, int maxBytes) {
     }
     m_logFile.setFileName(m_currentLogPath);
     if (m_logFile.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
-        m_logStream.setDevice(&m_logFile);
+        // Write directly via QFile, no QTextStream member
     }
 
     info(QString("Logging started — %1").arg(m_currentLogPath));
@@ -59,22 +58,22 @@ void LogManager::log(LogLevel level, const QString& message) {
     }
 
     // Write to file
-    if (m_logStream.device()) {
-        m_logStream << line << Qt::endl;
-        m_logStream.flush();
+    if (m_logFile.isOpen()) {
+        m_logFile.write(line.toUtf8() + "\n");
+        m_logFile.flush();
     }
 
     // Check if we need to rotate
     rotateIfNeeded();
 }
 
-void LogManager::debug(const QString& message) {   log(LogLevel::Debug, message); }
+void LogManager::debug(const QString& message)   { log(LogLevel::Debug, message); }
 void LogManager::info(const QString& message)    { log(LogLevel::Info, message); }
 void LogManager::warning(const QString& message) { log(LogLevel::Warning, message); }
 void LogManager::error(const QString& message)   { log(LogLevel::Error, message); }
 
 void LogManager::logFileMoved(const QString& src, const QString& dest, qint64 sizeBytes) {
-    info(QString("MOVED: \"%1\" → \"%2\" (%3 bytes)")
+    info(QString("MOVED: \"%1\" -> \"%2\" (%3 bytes)")
              .arg(src, dest).arg(sizeBytes));
 }
 
@@ -83,23 +82,23 @@ void LogManager::logFileDeleted(const QString& path) {
 }
 
 void LogManager::logFileRenamed(const QString& oldPath, const QString& newPath) {
-    info(QString("RENAMED: \"%1\" → \"%2\"").arg(oldPath, newPath));
+    info(QString("RENAMED: \"%1\" -> \"%2\"").arg(oldPath, newPath));
 }
 
 void LogManager::logFileSkipped(const QString& path, const QString& reason) {
-    info(QString("SKIPPED: \"%1\" — %2").arg(path, reason));
+    info(QString("SKIPPED: \"%1\" - %2").arg(path, reason));
 }
 
 void LogManager::logError(const QString& path, const QString& errorMsg) {
-    error(QString("ERROR: \"%1\" — %2").arg(path, errorMsg));
+    error(QString("ERROR: \"%1\" - %2").arg(path, errorMsg));
 }
 
 void LogManager::logDirectoryCleaned(const QString& dir, int filesRenamed) {
-    info(QString("CLEANUP: \"%1\" — %2 files renumbered").arg(dir).arg(filesRenamed));
+    info(QString("CLEANUP: \"%1\" - %2 files renumbered").arg(dir).arg(filesRenamed));
 }
 
 void LogManager::logSortComplete(int sorted, int skipped, int errors) {
-    info(QString("SORT COMPLETE — sorted: %1, skipped: %2, errors: %3")
+    info(QString("SORT COMPLETE - sorted: %1, skipped: %2, errors: %3")
              .arg(sorted).arg(skipped).arg(errors));
 }
 
@@ -139,10 +138,10 @@ void LogManager::rotateLogs() {
     m_currentLogPath = dir.filePath(fileName);
     m_logFile.setFileName(m_currentLogPath);
     if (m_logFile.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
-        m_logStream.setDevice(&m_logFile);
+        // File is ready for writing
     }
 
-    info(QString("Log rotated — new file: %1").arg(m_currentLogPath));
+    info(QString("Log rotated - new file: %1").arg(m_currentLogPath));
 }
 
 QString LogManager::timestamp() const {
