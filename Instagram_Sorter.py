@@ -18,14 +18,41 @@ import webbrowser
 import subprocess
 import json
 import configparser
+import glob
 from collections import defaultdict
+from datetime import datetime
 from typing import Dict, Union, List
 
-# from pypref import Preferences
+# Configure logging with dated/timestamped log files and automatic cleanup
+LOG_DIR = os.path.join(os.path.dirname(__file__), "logs")
+os.makedirs(LOG_DIR, exist_ok=True)
+
+# Clean up old log files - keep only the most recent ones
+MAX_LOG_FILES = 20  # Maximum number of log files to keep
+log_files = glob.glob(os.path.join(LOG_DIR, "ig_sorter_*.log"))
+if len(log_files) >= MAX_LOG_FILES:
+    # Sort by modification time (oldest first) and remove the oldest ones
+    log_files.sort(key=os.path.getmtime)
+    files_to_remove = len(log_files) - MAX_LOG_FILES + 1
+    for old_log in log_files[:files_to_remove]:
+        try:
+            os.remove(old_log)
+        except OSError:
+            pass
+
+# Create timestamped log file
+log_filename = f"ig_sorter_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+log_filepath = os.path.join(LOG_DIR, log_filename)
 
 # NOTE TO USER: use logging.DEBUG for testing, logging.CRITICAL for runtime
-logging.basicConfig(stream=sys.stderr,
-                    level=logging.DEBUG)
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_filepath, encoding='utf-8'),
+        logging.StreamHandler(sys.stderr)
+    ]
+)
 
 config = configparser.ConfigParser()
 config.read('settings.ini')

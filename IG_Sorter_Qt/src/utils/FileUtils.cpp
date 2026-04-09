@@ -3,7 +3,11 @@
 #include <QFile>
 #include <QDir>
 #include <QFileInfo>
-#include <QUuid>
+#include <QCoreApplication>
+
+#ifdef Q_OS_WIN
+#include <windows.h>
+#endif
 
 QString FileUtils::safeMove(const QString& sourcePath,
                             const QString& destDir,
@@ -32,8 +36,32 @@ QString FileUtils::safeMove(const QString& sourcePath,
         return QString();
     }
 
-    // Phase 1: Copy to temp file in destination
-    QString tempName = destFileName + ".part." + QUuid::createUuid().toString();
+#ifdef Q_OS_WIN
+    // Use native MoveFileExW with COPY_ALLOWED — handles cross-volume moves
+    // atomically: copies to dest then deletes source in one OS-level operation
+    // This avoids the copy-then-delete issue where Qt image handles block deletion
+    BOOL moved = MoveFileExW(
+        reinterpret_cast<const wchar_t*>(sourcePath.utf16()),
+        reinterpret_cast<const wchar_t*>(finalPath.utf16()),
+        MOVEFILE_COPY_ALLOWED | MOVEFILE_REPLACE_EXISTING
+    );
+
+    if (moved) {
+        QFileInfo destInfo(finalPath);
+        LogManager::instance()->logFileMoved(sourcePath, finalPath, destInfo.size());
+        return finalPath;
+    }
+
+    DWORD err = GetLastError();
+    if (errorMsg) {
+        *errorMsg = QString("MoveFileEx failed (error %1).").arg(err);
+    }
+    LogManager::instance()->logError(sourcePath, *errorMsg);
+    return QString();
+
+#else
+    // Fallback for non-Windows: copy + delete
+    QString tempName = destFileName + ".part." + QCoreApplication::applicationName();
     QString tempPath = destDir + "/" + tempName;
 
     if (!QFile::copy(sourcePath, tempPath)) {
@@ -42,7 +70,6 @@ QString FileUtils::safeMove(const QString& sourcePath,
         return QString();
     }
 
-    // Verify copy
     QFileInfo tempInfo(tempPath);
     if (!tempInfo.exists() || tempInfo.size() != sourceInfo.size()) {
         QFile::remove(tempPath);
@@ -51,7 +78,6 @@ QString FileUtils::safeMove(const QString& sourcePath,
         return QString();
     }
 
-    // Phase 2: Rename temp to final name
     if (!QFile::rename(tempPath, finalPath)) {
         QFile::remove(tempPath);
         if (errorMsg) *errorMsg = "Failed to finalize rename.";
@@ -59,7 +85,6 @@ QString FileUtils::safeMove(const QString& sourcePath,
         return QString();
     }
 
-    // Phase 3: Delete source only after everything succeeded
     if (!QFile::remove(sourcePath)) {
         if (errorMsg) *errorMsg = "Source file could not be removed after copy.";
         LogManager::instance()->logError(sourcePath, *errorMsg);
@@ -68,6 +93,7 @@ QString FileUtils::safeMove(const QString& sourcePath,
 
     LogManager::instance()->logFileMoved(sourcePath, finalPath, tempInfo.size());
     return finalPath;
+#endif
 }
 
 QString FileUtils::nextAvailableName(const QString& dir,

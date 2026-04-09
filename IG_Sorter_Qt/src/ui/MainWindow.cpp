@@ -10,6 +10,7 @@
 #include "core/FileGrouper.h"
 #include "utils/ConfigManager.h"
 #include "utils/ThemeManager.h"
+#include "utils/LogManager.h"
 #include "utils/FileUtils.h"
 #include <QStackedWidget>
 #include <QStatusBar>
@@ -34,16 +35,43 @@ MainWindow::MainWindow(QWidget* parent)
 
     // Database
     QString dbPath = ConfigManager::instance()->databaseFile();
-    // Resolve relative paths relative to the application directory
+    // Resolve relative paths relative to the application directory.
+    // If not found, also check the parent directory (covers dev builds where
+    // the binary lives in build/ but data is in the repo root).
     QFileInfo dbInfo(dbPath);
     if (!dbInfo.isAbsolute()) {
         QString appDir = QCoreApplication::applicationDirPath();
-        dbPath = QDir(appDir).filePath(dbPath);
+        QString candidate = QDir(appDir).filePath(dbPath);
+        if (!QFile::exists(candidate)) {
+            // Try one level up (repo root during development)
+            candidate = QDir(appDir).filePath("../" + dbPath);
+            if (!QFile::exists(candidate)) {
+                // Last resort: fall back to submodule default
+                candidate = QDir(appDir).filePath("../private-data/ig_people.json");
+                if (QFile::exists(candidate)) {
+                    LogManager::instance()->warning(
+                        QString("Configured DB not found, using default: %1").arg(candidate));
+                    dbPath = candidate;
+                }
+            } else {
+                dbPath = QFileInfo(candidate).absoluteFilePath();
+            }
+        } else {
+            dbPath = QFileInfo(candidate).absoluteFilePath();
+        }
     }
+
+    LogManager::instance()->info(QString("Database path: %1 (exists: %2)").arg(dbPath).arg(QFile::exists(dbPath)));
+
     m_db = new DatabaseManager(dbPath, this);
     // Attempt to load at startup; warn only if file exists but fails to load
-    if (!dbPath.isEmpty() && !m_db->load()) {
-        // Silently skip — user may not have configured a database yet
+    if (!dbPath.isEmpty()) {
+        bool loaded = m_db->load();
+        LogManager::instance()->info(QString("Database loaded: %1, entries: %2").arg(loaded).arg(m_db->allEntries().size()));
+        if (!loaded && QFile::exists(dbPath)) {
+            QMessageBox::warning(this, "Database Load Error",
+                QString("Failed to load database from:\n%1").arg(dbPath));
+        }
     }
 
     // Engine
@@ -80,6 +108,8 @@ MainWindow::MainWindow(QWidget* parent)
     // CleanupScreen -> SortingScreen
     connect(m_cleanupScreen, &CleanupScreen::continueClicked,
             this, &MainWindow::showSortingScreen);
+    connect(m_cleanupScreen, &CleanupScreen::menuClicked,
+            this, &MainWindow::showMenuScreen);
 
     // SortingScreen -> ReportScreen when done
     connect(m_sortingScreen, &SortingScreen::allBatchesDone,
@@ -158,17 +188,35 @@ void MainWindow::showCleanupScreen() {
 }
 
 void MainWindow::showSortingScreen() {
-    // Group files and set on sorting screen
-    QList<FileGroup> groups = m_engine->groupFiles();
+    // Run file grouping asynchronously to avoid blocking the UI
+    m_statusBar->showMessage("Scanning and grouping files...");
+    m_cleanupScreen->setDirectories(QStringList());  // clear old progress bars
+    m_cleanupScreen->setStatusText("Grouping files from source directory...");
+    m_cleanupScreen->enableContinue(false);
+    showCleanupScreen();  // keep showing cleanup screen while grouping
 
-    // Load output folders into the sort panel
-    m_sortingScreen->setOutputFolders(ConfigManager::instance()->outputFolders());
-    m_sortingScreen->setGroups(groups);
-    m_sortingScreen->setDatabaseManager(m_db);
-    m_sortingScreen->setEngine(m_engine);
+    QFutureWatcher<QList<FileGroup>>* groupWatcher =
+        new QFutureWatcher<QList<FileGroup>>(this);
 
-    m_stackedWidget->setCurrentWidget(m_sortingScreen);
-    m_statusBar->showMessage(QString("Sorting: %1 groups found").arg(groups.size()));
+    connect(groupWatcher, &QFutureWatcher<QList<FileGroup>>::finished,
+            this, [this, groupWatcher]() {
+                QList<FileGroup> groups = groupWatcher->result();
+
+                // Load output folders into the sort panel
+                m_sortingScreen->setOutputFolders(ConfigManager::instance()->outputFolders());
+                m_sortingScreen->setGroups(groups);
+                m_sortingScreen->setDatabaseManager(m_db);
+                m_sortingScreen->setEngine(m_engine);
+
+                m_stackedWidget->setCurrentWidget(m_sortingScreen);
+                m_statusBar->showMessage(QString("Sorting: %1 groups found").arg(groups.size()));
+
+                groupWatcher->deleteLater();
+            });
+
+    groupWatcher->setFuture(QtConcurrent::run([this]() {
+        return m_engine->groupFiles();
+    }));
 }
 
 void MainWindow::showReportScreen() {
@@ -179,6 +227,10 @@ void MainWindow::showReportScreen() {
 void MainWindow::showSettings() {
     m_settingsDialog->loadSettings();
     m_settingsDialog->exec();
+    // Refresh menu screen in case settings changed
+    if (m_stackedWidget->currentWidget() == m_menuScreen) {
+        m_menuScreen->refreshConfigStatus();
+    }
 }
 
 void MainWindow::startSortingPipeline() {
@@ -209,10 +261,43 @@ void MainWindow::startSortingPipeline() {
         return;
     }
 
-    // Reload database if path changed
+    // Reload database if path changed — resolve relative path the same way
     QString dbPath = ConfigManager::instance()->databaseFile();
+    QFileInfo dbReloadInfo(dbPath);
+    if (!dbReloadInfo.isAbsolute()) {
+        QString appDir = QCoreApplication::applicationDirPath();
+        QString candidate = QDir(appDir).filePath(dbPath);
+        if (!QFile::exists(candidate)) {
+            candidate = QDir(appDir).filePath("../" + dbPath);
+            if (!QFile::exists(candidate)) {
+                candidate = QDir(appDir).filePath("../private-data/ig_people.json");
+                if (QFile::exists(candidate)) {
+                    dbPath = candidate;
+                }
+            }
+        }
+        dbPath = QFileInfo(candidate).absoluteFilePath();
+    }
+    int entriesBefore = m_db->allEntries().size();
     if (!dbPath.isEmpty() && QFile::exists(dbPath)) {
-        m_db->load();
+        bool reloaded = m_db->load();
+        LogManager::instance()->info(
+            QString("DB reload: %1, entries before=%2 after=%3")
+                .arg(reloaded).arg(entriesBefore).arg(m_db->allEntries().size()));
+    }
+
+    // Validate database is loaded before proceeding
+    if (m_db->allEntries().isEmpty()) {
+        int ret = QMessageBox::warning(this, "No Database Loaded",
+            "No accounts database is loaded. The app cannot identify any names.\n\n"
+            "Would you like to open Settings to configure the database path?",
+            QMessageBox::Yes | QMessageBox::Cancel,
+            QMessageBox::Yes);
+
+        if (ret == QMessageBox::Yes) {
+            showSettings();
+        }
+        return;
     }
 
     // Show cleanup screen

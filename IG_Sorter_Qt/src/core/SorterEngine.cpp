@@ -3,6 +3,9 @@
 #include "utils/FileUtils.h"
 #include "utils/LogManager.h"
 #include <QDir>
+#include <QtConcurrent>
+#include <QFutureSynchronizer>
+#include <QMutex>
 
 SorterEngine::SorterEngine(DatabaseManager* db, QObject* parent)
     : QObject(parent), m_db(db) {}
@@ -29,42 +32,59 @@ bool SorterEngine::initialize(const QString& sourceDir, const QStringList& outpu
 }
 
 CleanupReport SorterEngine::runCleanup() {
+    LogManager::instance()->info(QString("Starting cleanup on %1 directories (parallel)").arg(m_outputDirs.size()));
+
+    // Shared results protected by mutex
+    QMutex resultsMutex;
     CleanupReport combinedReport;
 
-    LogManager::instance()->info(QString("Starting cleanup on %1 directories").arg(m_outputDirs.size()));
+    // Run each directory in its own thread
+    QFutureSynchronizer<void> sync;
+    for (const QString& dir : m_outputDirs) {
+        sync.addFuture(QtConcurrent::run([this, dir, &combinedReport, &resultsMutex]() {
+            LogManager::instance()->info(QString("Cleaning directory: %1").arg(dir));
 
-    for (int i = 0; i < m_outputDirs.size(); ++i) {
-        const QString& dir = m_outputDirs[i];
+            // Create DirectoryCleanup instance on this worker thread
+            auto* cleanup = new DirectoryCleanup(m_db);
 
-        LogManager::instance()->info(QString("Cleaning directory: %1").arg(dir));
+            // Connect progress signal — emit via queued invokeMethod to main thread
+            QObject::connect(cleanup, &DirectoryCleanup::directoryProgress,
+                             this, [this, dir](const QString& d, int current, int total) {
+                Q_UNUSED(d);
+                QMetaObject::invokeMethod(this, [this, dir, current, total]() {
+                    emit cleanupProgress(dir, current, total);
+                }, Qt::QueuedConnection);
+            }, Qt::DirectConnection);
 
-        // Create a DirectoryCleanup instance and run it synchronously
-        // (runCleanup itself runs in a background thread via QFutureWatcher)
-        auto* cleanup = new DirectoryCleanup(m_db);
+            CleanupReport report = cleanup->run(dir);
+            cleanup->deleteLater();
 
-        // Connect progress signal before running
-        QObject::connect(cleanup, &DirectoryCleanup::directoryProgress,
-                         this, [this, dir](const QString& d, int current, int total) {
-            Q_UNUSED(d);
-            emit cleanupProgress(dir, current, total);
-        }, Qt::DirectConnection);
+            // Merge results under mutex
+            QMutexLocker locker(&resultsMutex);
+            combinedReport.totalDirectoriesScanned += report.totalDirectoriesScanned;
+            combinedReport.totalFilesRenamed += report.totalFilesRenamed;
+            combinedReport.unresolvedIssues.append(report.unresolvedIssues);
+            LogManager::instance()->logDirectoryCleaned(dir, report.totalFilesRenamed);
 
-        CleanupReport report = cleanup->run(dir);
-        cleanup->deleteLater();
-
-        combinedReport.totalDirectoriesScanned += report.totalDirectoriesScanned;
-        combinedReport.totalFilesRenamed += report.totalFilesRenamed;
-        combinedReport.unresolvedIssues.append(report.unresolvedIssues);
-        LogManager::instance()->logDirectoryCleaned(dir, report.totalFilesRenamed);
-
-        // Signal that this directory is done
-        emit cleanupDirectoryDone(dir, report.totalFilesRenamed);
+            // Signal that this directory is done (queued to main thread)
+            QMetaObject::invokeMethod(this, [this, dir, count = report.totalFilesRenamed]() {
+                emit cleanupDirectoryDone(dir, count);
+            }, Qt::QueuedConnection);
+        }));
     }
 
+    sync.waitForFinished();
     return combinedReport;
 }
 
 QList<FileGroup> SorterEngine::groupFiles() {
+    // Fix file extensions before grouping so all images load correctly
+    ExtensionFixReport fixReport = ExtensionFixer::run(m_sourceDir);
+    if (fixReport.filesRenamed > 0) {
+        LogManager::instance()->info(
+            QString("Fixed %1 file extensions in source directory").arg(fixReport.filesRenamed));
+    }
+
     LogManager::instance()->info(QString("Grouping files from: %1").arg(m_sourceDir));
     FileGrouper grouper(m_db);
     QList<FileGroup> groups = grouper.group(m_sourceDir);

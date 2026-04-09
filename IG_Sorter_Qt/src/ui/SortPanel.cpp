@@ -12,6 +12,7 @@
 #include <QKeyEvent>
 #include <QDesktopServices>
 #include <QUrl>
+#include <QTimer>
 
 SortPanel::SortPanel(QWidget* parent)
     : QWidget(parent), m_isKnown(true), m_accountType(AccountType::Personal),
@@ -36,12 +37,6 @@ SortPanel::SortPanel(QWidget* parent)
     m_selectedCountLabel->setFont(countFont);
     m_mainLayout->addWidget(m_selectedCountLabel);
 
-    // Folder buttons
-    m_folderButtonsLayout = new QHBoxLayout();
-    m_folderButtonsLayout->setSpacing(20);
-    m_folderButtonsLayout->addStretch();
-    m_mainLayout->addLayout(m_folderButtonsLayout);
-
     // Skip button
     m_skipButton = new QPushButton("Skip Batch", this);
     m_skipButton->setMinimumHeight(40);
@@ -52,6 +47,16 @@ SortPanel::SortPanel(QWidget* parent)
 
     connect(m_skipButton, &QPushButton::clicked,
             this, &SortPanel::skipClicked);
+
+    // Delete button
+    m_deleteButton = new QPushButton("Delete Selected", this);
+    m_deleteButton->setMinimumHeight(40);
+    m_deleteButton->setFont(btnFont);
+    m_deleteButton->setStyleSheet("QPushButton { color: #d32f2f; }");
+    m_mainLayout->addWidget(m_deleteButton);
+
+    connect(m_deleteButton, &QPushButton::clicked,
+            this, &SortPanel::deleteSelectedClicked);
 
     // IRL name display row (label + Open Instagram button)
     auto* irlRowLayout = new QHBoxLayout();
@@ -100,8 +105,9 @@ SortPanel::SortPanel(QWidget* parent)
         QString irlName = m_unknownNameEdit->text().trimmed();
         if (irlName.isEmpty()) return;
 
-        if (m_accountType == AccountType::Curator) {
-            // Curator: just use this name for the current batch — no DB change
+        if (m_accountType == AccountType::Curator || m_accountType == AccountType::IrlOnly) {
+            // Curator or download source (Twitter, TikTok, etc.) — resolve name,
+            // let SortingScreen handle DB prompt if needed
             emit curatorResolvedName(irlName);
         } else {
             // Unknown personal: add to database
@@ -114,6 +120,20 @@ SortPanel::SortPanel(QWidget* parent)
             emit addUnknownAccount(m_accountHandle, irlName, type);
         }
     });
+
+    // Quick-fill name buttons (favorites) for IrlOnly sources
+    m_favoritesWidget = new QWidget(this);
+    m_favoritesLayout = new QHBoxLayout(m_favoritesWidget);
+    m_favoritesLayout->setContentsMargins(0, 0, 0, 0);
+    m_favoritesLayout->setSpacing(6);
+    m_favoritesWidget->hide();
+    m_mainLayout->addWidget(m_favoritesWidget);
+
+    // Folder buttons (SFW, MSFW, NSFW) — at the bottom below name/favorites
+    m_folderButtonsLayout = new QHBoxLayout();
+    m_folderButtonsLayout->setSpacing(20);
+    m_folderButtonsLayout->addStretch();
+    m_mainLayout->addLayout(m_folderButtonsLayout);
 
     connect(m_openInstagramButton, &QPushButton::clicked, this, [this]() {
         if (!m_accountHandle.isEmpty()) {
@@ -169,6 +189,14 @@ bool SortPanel::eventFilter(QObject* watched, QEvent* event) {
     return QWidget::eventFilter(watched, event);
 }
 
+void SortPanel::resizeEvent(QResizeEvent* event) {
+    QWidget::resizeEvent(event);
+    // Re-evaluate favorite buttons visibility on resize
+    if (!m_favoriteButtons.isEmpty()) {
+        trimOverflowFavoriteButtons();
+    }
+}
+
 void SortPanel::setAccountInfo(const QString& accountHandle,
                                const QString& irlName,
                                bool isKnown,
@@ -194,6 +222,17 @@ void SortPanel::setAccountInfo(const QString& accountHandle,
         m_irlNameLabel->setText(irlName);
         m_unknownAccountWidget->hide();
         m_openInstagramButton->hide();
+    } else if (isKnown && type == AccountType::IrlOnly) {
+        // Known source type (TikTok, Twitter, etc.) — just needs a person's name for output
+        m_irlNameLabel->setText(accountHandle);
+        m_unknownAccountWidget->show();
+        m_unknownAccountLabel->setText("Who is in these photos?");
+        m_unknownNameEdit->setPlaceholderText("Enter IRL name...");
+        m_unknownNameEdit->clear();
+        m_unknownTypeCombo->hide();
+        m_openInstagramButton->hide();
+        m_unknownAddButton->setText("Add Person");
+        m_unknownAddButton->setObjectName("addPersonButton");
     } else {
         // Unknown personal account — user must add to database
         m_irlNameLabel->setText("Unknown account: " + accountHandle);
@@ -202,8 +241,8 @@ void SortPanel::setAccountInfo(const QString& accountHandle,
         m_unknownNameEdit->setPlaceholderText("Enter IRL name...");
         m_unknownNameEdit->clear();
         m_unknownTypeCombo->show();
-        m_unknownAddButton->setText("Add");
-        m_unknownAddButton->setObjectName("");
+        m_unknownAddButton->setText("Add Person");
+        m_unknownAddButton->setObjectName("addPersonButton");
         m_openInstagramButton->show();
     }
 }
@@ -220,11 +259,16 @@ void SortPanel::updateSelectedCount(int count) {
 }
 
 bool SortPanel::isCuratorNameResolved() const {
-    return m_accountType == AccountType::Curator && !m_unknownNameEdit->text().trimmed().isEmpty();
+    return (m_accountType == AccountType::Curator || m_accountType == AccountType::IrlOnly)
+        && !m_unknownNameEdit->text().trimmed().isEmpty();
 }
 
 QString SortPanel::getCuratorResolvedName() const {
     return m_unknownNameEdit->text().trimmed();
+}
+
+int SortPanel::getUnknownAccountTypeIndex() const {
+    return m_unknownTypeCombo->currentIndex();
 }
 
 void SortPanel::rebuildFolderButtons() {
@@ -260,4 +304,73 @@ void SortPanel::rebuildFolderButtons() {
     }
 
     m_folderButtonsLayout->addStretch();
+}
+
+void SortPanel::setQuickFillNames(const QStringList& names) {
+    // Always clear existing buttons and stretches first
+    for (auto* btn : m_favoriteButtons) {
+        delete btn;
+    }
+    m_favoriteButtons.clear();
+    for (int i = m_favoritesLayout->count() - 1; i >= 0; --i) {
+        QLayoutItem* item = m_favoritesLayout->takeAt(i);
+        if (!item->widget()) delete item;  // stretch
+    }
+
+    if (names.isEmpty()) {
+        m_favoritesWidget->hide();
+        m_favoritesWidget->adjustSize();
+        if (m_mainLayout) m_mainLayout->invalidate();
+        return;
+    }
+
+    // Create all buttons first
+    for (const QString& name : names) {
+        auto* btn = new QPushButton(name, m_favoritesWidget);
+        QFont font = btn->font();
+        font.setPointSize(9);
+        btn->setFont(font);
+        btn->setMinimumHeight(32);
+        btn->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Preferred);
+        btn->setStyleSheet("QPushButton { padding: 4px 8px; }");
+        btn->setCheckable(true);
+        connect(btn, &QPushButton::clicked, this, [this, name, btn]() {
+            m_unknownNameEdit->setText(name);
+            m_unknownNameEdit->setCursorPosition(name.length());
+        });
+        m_favoriteButtons.append(btn);
+        m_favoritesLayout->addWidget(btn);
+    }
+    m_favoritesLayout->addStretch();
+
+    // Trim overflow buttons after layout completes
+    QTimer::singleShot(0, this, [this]() { trimOverflowFavoriteButtons(); });
+
+    m_favoritesWidget->show();
+}
+
+void SortPanel::trimOverflowFavoriteButtons() {
+    int availableWidth = this->width() - m_favoritesLayout->contentsMargins().left()
+                       - m_favoritesLayout->contentsMargins().right();
+    int spacing = m_favoritesLayout->spacing();
+    int usedWidth = 0;
+    int visibleCount = 0;
+
+    for (int i = 0; i < m_favoriteButtons.size(); ++i) {
+        auto* btn = m_favoriteButtons[i];
+        int btnWidth = btn->sizeHint().width();
+        if (i > 0) usedWidth += spacing;
+        if (usedWidth + btnWidth <= availableWidth) {
+            btn->show();
+            usedWidth += btnWidth;
+            visibleCount++;
+        } else {
+            btn->hide();
+        }
+    }
+}
+
+void SortPanel::rebuildFavoriteButtons() {
+    // Placeholder — called when favorites need refreshing
+    // Actual data is managed externally via setQuickFillNames()
 }

@@ -21,6 +21,9 @@ public:
     // Get the image dimensions for layout calculations
     QSize imageDimensions() const;
 
+    // Release the pixmap to free memory and any associated file handles
+    void releaseImage();
+
 signals:
     void clicked();
 

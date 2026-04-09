@@ -1,6 +1,7 @@
 #include "core/FileNameParser.h"
 #include <QRegularExpression>
 #include <QFileInfo>
+#include <QDateTime>
 
 ParsedResult FileNameParser::parse(const QString& filePath) {
     ParsedResult result;
@@ -8,10 +9,17 @@ ParsedResult FileNameParser::parse(const QString& filePath) {
     QFileInfo fileInfo(filePath);
     QString fileName = fileInfo.fileName();
 
-    // Instaloader pattern: account_YYYY-MM-DD_HH-MM-SS_N.ext
-    // e.g. "joeygore1_2026-03-13_15-30-00_1.jpg"
+    // Instaloader pattern: account_YYYY-MM-DD_HH-MM-SS_N.ext OR account_YYYY-MM-DD_HH-MM-SS.ext
+    // e.g. "joeygore1_2026-03-13_15-30-00_1.jpg" or "ben_2025-01-01_12-00-00.jpg"
+    // Capture groups: (1)=account, (2)=date, (3)=time, (4)=sequence (may be empty)
+    // Note: .* at end required because Qt's match() does full-string matching
     QRegularExpression instaloaderRegex(
-        R"((^.+?)(?=_\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})_(\d+))");
+        "(.+?)(?=_"
+        "\\d{4}-\\d{2}-\\d{2})_"
+        "(\\d{4}-\\d{2}-\\d{2})_"
+        "(\\d{2}-\\d{2}-\\d{2})"
+        "(?:_(\\d+))?"
+        ".*");
 
     QRegularExpressionMatch match = instaloaderRegex.match(fileName);
     if (match.hasMatch()) {
@@ -21,7 +29,59 @@ ParsedResult FileNameParser::parse(const QString& filePath) {
         result.postTimestamp = result.postDate + "_" + result.postTime;
         result.sequenceNumber = match.captured(4).toInt();
         result.sourceType = "instaloader";
+        result.sourceEnum = SourceType::Instagram;
         result.matched = true;
+    } else {
+        // TikTok slideshow pattern: 32-char hex string.ext
+        // e.g. "6bf415004e6f7b395e9b3b14963a6e51.webp"
+        QRegularExpression tiktokRegex("^([0-9a-fA-F]{32})\\.");
+        QRegularExpressionMatch tiktokMatch = tiktokRegex.match(fileName);
+        if (tiktokMatch.hasMatch()) {
+            result.accountHandle = "TikTok Slideshow";
+            result.postTimestamp = "";
+            result.sequenceNumber = -1;
+            result.sourceType = "tiktok_slideshow";
+            result.sourceEnum = SourceType::TikTokSlideshow;
+            result.matched = true;
+        } else {
+            // Facebook download pattern: FB_IMG_<unix_timestamp>.ext
+            // e.g. "FB_IMG_1752582112941.jpg"
+            QRegularExpression fbRegex("^FB_IMG_(\\d{13})\\.");
+            QRegularExpressionMatch fbMatch = fbRegex.match(fileName);
+            if (fbMatch.hasMatch()) {
+                result.accountHandle = "Facebook";
+                // Convert millisecond Unix timestamp to readable date
+                qint64 ms = fbMatch.captured(1).toLongLong();
+                QDateTime dt = QDateTime::fromMSecsSinceEpoch(ms);
+                result.postTimestamp = dt.toString("yyyy-MM-dd_hh-mm-ss");
+                result.sequenceNumber = -1;
+                result.sourceType = "facebook";
+                result.sourceEnum = SourceType::Facebook;
+                result.matched = true;
+            } else {
+                // Twitter/X download pattern: YYYYMMDD_HHMMSS.ext
+                // e.g. "20250902_193054.jpg"
+                QRegularExpression twitterRegex(
+                    "^(\\d{4})(\\d{2})(\\d{2})_(\\d{2})(\\d{2})(\\d{2})\\.");
+                QRegularExpressionMatch twitterMatch = twitterRegex.match(fileName);
+                if (twitterMatch.hasMatch()) {
+                    result.accountHandle = "Twitter";
+                    result.postDate = QString("%1-%2-%3")
+                        .arg(twitterMatch.captured(1))
+                        .arg(twitterMatch.captured(2))
+                        .arg(twitterMatch.captured(3));
+                    result.postTime = QString("%1-%2-%3")
+                        .arg(twitterMatch.captured(4))
+                        .arg(twitterMatch.captured(5))
+                        .arg(twitterMatch.captured(6));
+                    result.postTimestamp = result.postDate + "_" + result.postTime;
+                    result.sequenceNumber = -1;
+                    result.sourceType = "twitter";
+                    result.sourceEnum = SourceType::Twitter;
+                    result.matched = true;
+                }
+            }
+        }
     }
 
     return result;

@@ -19,9 +19,9 @@ public:
     explicit LogManager(QObject* parent = nullptr);
     static LogManager* instance();
 
-    // Start logging to a file in the given directory
-    // Creates timestamped log files and rotates when size exceeds maxBytes
-    void start(const QString& logDir, int maxBytes = 5 * 1024 * 1024);
+    // Start logging. Creates a new timestamped log file on each launch.
+    // Keeps at most maxFiles files, deleting the oldest when the limit is exceeded.
+    void start(const QString& logDir, int maxFiles = 5);
 
     // Log a message at the given level
     void log(LogLevel level, const QString& message);
@@ -46,7 +46,7 @@ private:
     static LogManager* s_instance;
 
     void rotateIfNeeded();
-    void rotateLogs();
+    void cleanupOldLogs();
     QString timestamp() const;
     QString levelString(LogLevel level) const;
 
@@ -54,5 +54,5 @@ private:
     QString        m_currentLogPath;
     QFile          m_logFile;
     QRecursiveMutex m_mutex;
-    int            m_maxBytes;
+    int            m_maxFiles;
 };

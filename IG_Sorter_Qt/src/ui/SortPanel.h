@@ -33,24 +33,38 @@ public:
 
     void setDatabaseManager(DatabaseManager* db);
 
+    // Refresh the name completer from the database (call after DB changes)
+    void refreshCompleter();
+
     // Check if curator name has been entered
     bool isCuratorNameResolved() const;
     QString getCuratorResolvedName() const;
 
+    // Get the type combo index for unknown accounts
+    int getUnknownAccountTypeIndex() const;
+
+    // Set quick-fill name buttons for IrlOnly sources (top N names)
+    void setQuickFillNames(const QStringList& names);
+
 signals:
     void sortToFolderClicked(int folderIndex);
     void skipClicked();
+    void deleteSelectedClicked();
     void addUnknownAccount(const QString& account, const QString& irlName, AccountType type);
     void openInstagramClicked(const QString& account);
     // For curator accounts — resolve who is in the photos (no DB change)
     void curatorResolvedName(const QString& irlName);
+    // Favorite name button clicked
+    void favoriteNameSelected(const QString& name);
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
 
 private:
     void rebuildFolderButtons();
-    void refreshCompleter();
+    void rebuildFavoriteButtons();
+    void trimOverflowFavoriteButtons();
 
     QVBoxLayout*   m_mainLayout;
     QHBoxLayout*   m_folderButtonsLayout;
@@ -65,9 +79,15 @@ private:
     QPushButton*   m_openInstagramButton;
     QLabel*       m_unknownAccountLabel;
 
+    // Quick-fill name buttons for IrlOnly sources
+    QWidget*       m_favoritesWidget;
+    QHBoxLayout*   m_favoritesLayout;
+    QList<QPushButton*> m_favoriteButtons;
+
     QVector<OutputFolderConfig> m_outputFolders;
     QList<QPushButton*>         m_folderButtons;
     QPushButton*                m_skipButton;
+    QPushButton*                m_deleteButton;
 
     QString         m_accountHandle;
     QString         m_irlName;

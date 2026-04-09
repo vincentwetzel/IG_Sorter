@@ -1,4 +1,5 @@
 #include "core/DatabaseManager.h"
+#include "utils/LogManager.h"
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonArray>
@@ -73,13 +74,21 @@ bool DatabaseManager::save() {
 
     QJsonDocument doc(arr);
 
+    // Resolve to absolute path
+    QString absPath = QFileInfo(m_dbPath).absoluteFilePath();
+    LogManager::instance()->info(
+        QString("Saving DB to %1 (%2 entries)").arg(absPath).arg(arr.size()));
+
     QFile file(m_dbPath);
     if (!file.open(QIODevice::WriteOnly)) {
+        LogManager::instance()->error(
+            QString("Failed to open DB for writing: %1").arg(m_dbPath));
         return false;
     }
 
     file.write(doc.toJson());
     file.close();
+    LogManager::instance()->info(QString("DB saved successfully."));
     return true;
 }
 

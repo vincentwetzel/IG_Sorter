@@ -135,6 +135,27 @@ void ImagePreviewGrid::removeSelected() {
     rebuildGrid();
 }
 
+void ImagePreviewGrid::removePath(const QString& filePath) {
+    for (auto* item : m_items) {
+        if (item->filePath() == filePath) {
+            m_gridLayout->removeWidget(item);
+            item->deleteLater();
+            m_items.removeOne(item);
+            emit selectionChanged(0);
+            rebuildGrid();
+            return;
+        }
+    }
+}
+
+void ImagePreviewGrid::releaseImages(const QStringList& filePaths) {
+    for (auto* item : m_items) {
+        if (filePaths.contains(item->filePath())) {
+            item->thumbnail()->releaseImage();
+        }
+    }
+}
+
 void ImagePreviewGrid::clear() {
     for (auto* item : m_items) {
         m_gridLayout->removeWidget(item);

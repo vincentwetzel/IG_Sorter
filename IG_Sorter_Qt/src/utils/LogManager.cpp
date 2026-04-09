@@ -7,7 +7,7 @@
 LogManager* LogManager::s_instance = nullptr;
 
 LogManager::LogManager(QObject* parent)
-    : QObject(parent), m_maxBytes(5 * 1024 * 1024) {}
+    : QObject(parent), m_maxFiles(5) {}
 
 LogManager* LogManager::instance() {
     if (!s_instance) {
@@ -16,31 +16,33 @@ LogManager* LogManager::instance() {
     return s_instance;
 }
 
-void LogManager::start(const QString& logDir, int maxBytes) {
+void LogManager::start(const QString& logDir, int maxFiles) {
     QMutexLocker locker(&m_mutex);
 
     m_logDir = logDir;
-    m_maxBytes = maxBytes;
+    m_maxFiles = maxFiles;
 
     QDir dir(m_logDir);
     if (!dir.exists()) {
         dir.mkpath(".");
     }
 
-    // Create timestamped log file
-    QString fileName = QString("ig_sorter_%1.log")
-                           .arg(QDateTime::currentDateTime().toString("yyyy-MM-dd_HH-mm-ss"));
-    m_currentLogPath = dir.filePath(fileName);
+    // Clean up old log files if we exceed the limit
+    cleanupOldLogs();
+
+    // Create a new timestamped log file for this launch
+    QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
+    m_currentLogPath = dir.filePath(QString("ig_sorter_%1.log").arg(timestamp));
 
     if (m_logFile.isOpen()) {
         m_logFile.close();
     }
-    m_logFile.setFileName(m_currentLogPath);
-    if (m_logFile.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
-        // Write directly via QFile, no QTextStream member
-    }
 
-    info(QString("Logging started — %1").arg(m_currentLogPath));
+    m_logFile.setFileName(m_currentLogPath);
+    m_logFile.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text);
+
+    info(QString("Logging started — %1 (max %2 files)")
+             .arg(m_currentLogPath).arg(m_maxFiles));
 }
 
 void LogManager::log(LogLevel level, const QString& message) {
@@ -63,7 +65,6 @@ void LogManager::log(LogLevel level, const QString& message) {
         m_logFile.flush();
     }
 
-    // Check if we need to rotate
     rotateIfNeeded();
 }
 
@@ -107,41 +108,22 @@ QString LogManager::currentLogFile() const {
 }
 
 void LogManager::rotateIfNeeded() {
-    if (!m_logFile.isOpen()) return;
-
-    QFileInfo fi(m_currentLogPath);
-    if (fi.exists() && fi.size() >= m_maxBytes) {
-        rotateLogs();
-    }
+    // No size-based rotation — each launch gets its own file
+    Q_UNUSED(m_logFile)
 }
 
-void LogManager::rotateLogs() {
-    // Close current file
-    if (m_logFile.isOpen()) {
-        m_logFile.close();
-    }
-
+void LogManager::cleanupOldLogs() {
     QDir dir(m_logDir);
-    QStringList logFiles = dir.entryList(QStringList() << "ig_sorter_*.log",
-                                         QDir::Files, QDir::Name);
 
-    // Delete oldest log if more than 5 exist
-    while (logFiles.size() >= 5) {
-        QString oldest = dir.filePath(logFiles.first());
-        QFile::remove(oldest);
-        logFiles.removeFirst();
+    // Find all timestamped log files, sorted by name (oldest first)
+    QStringList logFiles = dir.entryList(QStringList() << "ig_sorter_*.log", QDir::Files, QDir::Name);
+
+    if (logFiles.size() >= m_maxFiles) {
+        int filesToRemove = logFiles.size() - m_maxFiles + 1;
+        for (int i = 0; i < filesToRemove; ++i) {
+            QFile::remove(dir.filePath(logFiles.at(i)));
+        }
     }
-
-    // Create new log file
-    QString fileName = QString("ig_sorter_%1.log")
-                           .arg(QDateTime::currentDateTime().toString("yyyy-MM-dd_HH-mm-ss"));
-    m_currentLogPath = dir.filePath(fileName);
-    m_logFile.setFileName(m_currentLogPath);
-    if (m_logFile.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
-        // File is ready for writing
-    }
-
-    info(QString("Log rotated - new file: %1").arg(m_currentLogPath));
 }
 
 QString LogManager::timestamp() const {

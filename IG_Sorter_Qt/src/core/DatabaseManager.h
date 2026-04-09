@@ -11,6 +11,15 @@ enum class AccountType {
     IrlOnly     // No account — name-only entry for validation
 };
 
+// Distinguishes real Instagram accounts from download source types
+enum class SourceType {
+    Instagram,       // Normal IG account (instaloader download)
+    TikTokSlideshow, // TikTok slideshow download (32-char hex filename)
+    Twitter,         // Twitter/X download (YYYYMMDD_HHMMSS.ext)
+    Facebook,        // Facebook download (FB_IMG_<unix_ms>.ext)
+    Unknown          // Unrecognized source
+};
+
 struct PersonEntry {
     QString     account;    // empty QString when null (irl_only entries)
     QString     irlName;

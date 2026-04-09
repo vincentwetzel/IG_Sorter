@@ -22,11 +22,14 @@ int main(int argc, char* argv[]) {
     app.setApplicationName("IG Sorter");
     app.setApplicationVersion("0.1.0");
 
+    // Tell Qt where to find image format plugins (for dev builds)
+    app.addLibraryPath("C:/Qt/6.10.2/msvc2022_64/plugins");
+
     // Set default font
     QFont defaultFont("Segoe UI", 11);
     app.setFont(defaultFont);
 
-    // Initialize log manager
+    // Initialize log manager — creates timestamped log file per launch, keeps max 5 files
     QString logDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     LogManager::instance()->start(logDir);
 

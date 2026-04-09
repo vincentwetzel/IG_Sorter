@@ -46,6 +46,7 @@ signals:
 private slots:
     void handleSortToFolder(int folderIndex);
     void handleSkip();
+    void handleDeleteSelected();
     void handleAddUnknownAccount(const QString& account, const QString& irlName,
                                  AccountType type);
     void handleOpenInstagram(const QString& account);
@@ -53,6 +54,9 @@ private slots:
 
 private:
     void updateHeader();
+    void recordNameUsed(const QString& name);
+    void updateFavoriteButtons();
+    QString getCurrentSourceType() const;
 
     QVBoxLayout*      m_mainLayout;
     QLabel*           m_headerLabel;
@@ -77,4 +81,8 @@ private:
     QStringList m_errorMessages;
     QList<QString> m_newAccountsAdded;
     QMap<QString, int> m_filesByAccountType;  // "Personal"/"Curator" -> count
+
+    // Quick-fill name tracking (leaderboard for IrlOnly sources)
+    QMap<QString, int> m_nameCounts;   // IRL name → usage count
+    QString m_currentSourceType;       // "twitter", "tiktok_slideshow", etc.
 };

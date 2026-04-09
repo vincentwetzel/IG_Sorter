@@ -20,10 +20,12 @@ set(SOURCES
     src/core/DatabaseManager.cpp
     src/core/DirectoryCleanup.cpp
     src/core/SorterEngine.cpp
+    src/core/ExtensionFixer.cpp
     src/utils/ConfigManager.cpp
     src/utils/FileUtils.cpp
     src/utils/ThemeManager.cpp
     src/utils/LogManager.cpp
+    src/utils/WebpDecoder.cpp
     src/ui/MainWindow.cpp
     src/ui/MenuScreen.cpp
     src/ui/CleanupScreen.cpp
@@ -44,11 +46,13 @@ set(HEADERS
     src/core/DatabaseManager.h
     src/core/DirectoryCleanup.h
     src/core/SorterEngine.h
+    src/core/ExtensionFixer.h
     src/core/Types.h
     src/utils/ConfigManager.h
     src/utils/FileUtils.h
     src/utils/ThemeManager.h
     src/utils/LogManager.h
+    src/utils/WebpDecoder.h
     src/ui/MainWindow.h
     src/ui/MenuScreen.h
     src/ui/CleanupScreen.h

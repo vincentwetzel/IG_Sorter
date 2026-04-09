@@ -1,5 +1,6 @@
 #include "core/FileGrouper.h"
 #include "core/DatabaseManager.h"
+#include <algorithm>
 #include <QDir>
 #include <QDirIterator>
 #include <QFileInfo>
@@ -65,7 +66,11 @@ QList<FileGroup> FileGrouper::group(const QString& sourceDir) {
             group.accountHandle = accountHandle;
             group.postTimestamp = postTimestamp;
 
-            if (parsed.matched && m_db && m_db->hasAccount(accountHandle)) {
+            // Known source types (non-Instagram, e.g. TikTok Slideshow) don't need DB lookup
+            if (parsed.sourceEnum != SourceType::Instagram && parsed.sourceEnum != SourceType::Unknown) {
+                group.isKnown = true;
+                group.accountType = AccountType::IrlOnly;
+            } else if (parsed.matched && m_db && m_db->hasAccount(accountHandle)) {
                 group.irlName = m_db->getIrlName(accountHandle);
                 group.isKnown = true;
                 group.accountType = m_db->getEntry(accountHandle).type;
@@ -82,6 +87,15 @@ QList<FileGroup> FileGrouper::group(const QString& sourceDir) {
 
         emit progressChanged(currentFile, totalFiles);
     }
+
+    // Sort groups by account handle, then by post timestamp.
+    // This ensures all posts for the same account are consecutive.
+    std::sort(groups.begin(), groups.end(),
+        [](const FileGroup& a, const FileGroup& b) {
+            if (a.accountHandle != b.accountHandle)
+                return a.accountHandle < b.accountHandle;
+            return a.postTimestamp < b.postTimestamp;
+        });
 
     return groups;
 }

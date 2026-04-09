@@ -26,25 +26,24 @@ CleanupReport DirectoryCleanup::cleanupDirectoryInstance(const QString& dirPath)
 
     QDir dir(dirPath);
     if (!dir.exists()) {
+        LogManager::instance()->debug(QString("Directory does not exist, skipping: %1").arg(dirPath));
         return report;
     }
 
+    // Use QDir::entryList which is safer than QDirIterator for simple flat scans
+    dir.setFilter(QDir::Files | QDir::NoDotAndDotDot);
+    dir.setNameFilters(QStringList() << "*");
+    dir.setSorting(QDir::Name | QDir::IgnoreCase);
+    QStringList fileNames = dir.entryList();
+
     QStringList files;
-    QDirIterator it(dirPath, QDir::Files, QDirIterator::NoIteratorFlags);
-    while (it.hasNext()) {
-        QString file = it.next();
-        QFileInfo fi(file);
-        QString lowerName = fi.fileName().toLower();
+    for (const auto& fileName : fileNames) {
+        QString lowerName = fileName.toLower();
         if (lowerName == "thumbs.db" || lowerName == "desktop.ini") {
             continue;
         }
-        files.append(file);
+        files.append(dir.filePath(fileName));
     }
-
-    std::sort(files.begin(), files.end(), [](const QString& a, const QString& b) {
-        QFileInfo fa(a), fb(b);
-        return fa.fileName().compare(fb.fileName(), Qt::CaseInsensitive) < 0;
-    });
 
     struct FileEntry {
         QString fullPath;
@@ -56,6 +55,7 @@ CleanupReport DirectoryCleanup::cleanupDirectoryInstance(const QString& dirPath)
     QList<FileEntry> entries;
     QRegularExpression nameRegex(R"((.+?)\s+(\d+))");
 
+    int totalFiles = files.size();
     int fileIndex = 0;
     for (const auto& file : files) {
         QFileInfo fi(file);
@@ -70,11 +70,12 @@ CleanupReport DirectoryCleanup::cleanupDirectoryInstance(const QString& dirPath)
             entry.extension = fi.suffix();
             entries.append(entry);
 
-            if (m_db && !m_db->hasIrlName(entry.personName)) {
-                if (!m_db->hasAccount(entry.personName)) {
+            if (m_db) {
+                QString personName = entry.personName;
+                if (!m_db->hasIrlName(personName) && !m_db->hasAccount(personName)) {
                     CleanupIssue issue;
                     issue.directory = dirPath;
-                    issue.personName = entry.personName;
+                    issue.personName = personName;
                     issue.filePaths.append(file);
                     report.unresolvedIssues.append(issue);
                 }
@@ -82,7 +83,7 @@ CleanupReport DirectoryCleanup::cleanupDirectoryInstance(const QString& dirPath)
         }
 
         fileIndex++;
-        emit directoryProgress(dirPath, fileIndex, files.size());
+        emit directoryProgress(dirPath, fileIndex, totalFiles);
     }
 
     // Group by person name
@@ -100,7 +101,7 @@ CleanupReport DirectoryCleanup::cleanupDirectoryInstance(const QString& dirPath)
         int expectedNum = 1;
         bool needsRenaming = false;
 
-        for (auto& entry : personFiles) {
+        for (const auto& entry : personFiles) {
             if (entry.number != expectedNum) {
                 needsRenaming = true;
                 break;
@@ -149,7 +150,7 @@ CleanupReport DirectoryCleanup::cleanupDirectoryInstance(const QString& dirPath)
         }
     }
 
-    emit directoryProgress(dirPath, files.size(), files.size());
+    emit directoryProgress(dirPath, totalFiles, totalFiles);
     return report;
 }
 

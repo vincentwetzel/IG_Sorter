@@ -15,6 +15,8 @@ public:
     void setImages(const QStringList& filePaths);
     QStringList selectedFilePaths() const;
     void        removeSelected();
+    void        removePath(const QString& filePath);
+    void        releaseImages(const QStringList& filePaths);
     void        clear();
     bool        hasImages() const;
 

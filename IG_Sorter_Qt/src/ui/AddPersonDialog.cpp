@@ -14,7 +14,7 @@ AddPersonDialog::AddPersonDialog(const QString& personName, QWidget* parent)
     setupUI();
     m_irlNameEdit->setText(personName);
     m_irlNameEdit->selectAll();
-    m_irlNameEdit->setFocus();
+    m_accountEdit->setFocus();
 }
 
 void AddPersonDialog::setupUI() {
@@ -41,7 +41,7 @@ void AddPersonDialog::setupUI() {
 
     auto* buttonLayout = new QHBoxLayout();
     buttonLayout->addStretch();
-    m_okButton = new QPushButton("Add & Sort", this);
+    m_okButton = new QPushButton("Add", this);
     m_cancelButton = new QPushButton("Cancel", this);
     buttonLayout->addWidget(m_okButton);
     buttonLayout->addWidget(m_cancelButton);

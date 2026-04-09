@@ -1,24 +1,76 @@
 #include "ui/ImageThumbnail.h"
+#include "utils/LogManager.h"
+#include "utils/WebpDecoder.h"
 #include <QMouseEvent>
 #include <QPainter>
 #include <QFileInfo>
+#include <QImageReader>
+#include <QFile>
+
+static bool isWebpHeader(const QByteArray& header) {
+    // WebP: RIFF....WEBP
+    return header.size() >= 12 &&
+           header[0] == 'R' && header[1] == 'I' &&
+           header[2] == 'F' && header[3] == 'F' &&
+           header[8] == 'W' && header[9] == 'E' &&
+           header[10] == 'B' && header[11] == 'P';
+}
 
 ImageThumbnail::ImageThumbnail(const QString& filePath, QWidget* parent)
     : QLabel(parent), m_filePath(filePath), m_selected(false)
 {
-    // Load full-resolution image once
-    m_pixmap.load(filePath);
+    // Check magic bytes to detect actual format
+    QFile file(filePath);
+    bool isWebp = false;
+    if (file.open(QIODevice::ReadOnly)) {
+        QByteArray header = file.read(16);
+        file.close();
+        isWebp = isWebpHeader(header);
+    }
+
+    if (isWebp) {
+        // WebP files can't be previewed without the Qt WebP plugin
+        // but the extension fixer already corrected the file extension
+    }
+
+    // Try loading with QImageReader first
+    QImageReader reader(filePath);
+    QImage image = reader.read();
+
+    // If QImageReader failed and it's WebP, try Windows WIC decoder
+    if (image.isNull() && isWebp) {
+        image = decodeWebpViaWic(filePath);
+        if (!image.isNull()) {
+            LogManager::instance()->info(
+                QString("Decoded WebP via WIC: %1").arg(QFileInfo(filePath).fileName()));
+        }
+    }
+
+    if (!image.isNull()) {
+        m_pixmap = QPixmap::fromImage(image);
+    }
+
     if (m_pixmap.isNull()) {
-        // Placeholder for non-image files
+        // Placeholder — show format info
         m_pixmap = QPixmap(200, 200);
-        m_pixmap.fill(QColor("#404040"));
+        if (isWebp) {
+            // Distinct color for WebP
+            m_pixmap.fill(QColor("#2c3e50"));
+        } else {
+            m_pixmap.fill(QColor("#404040"));
+        }
         QPainter painter(&m_pixmap);
         painter.setPen(QColor("#E0E0E0"));
         QFont font = painter.font();
         font.setPointSize(10);
         painter.setFont(font);
-        painter.drawText(m_pixmap.rect(), Qt::AlignCenter | Qt::TextWordWrap,
-                         QFileInfo(filePath).fileName());
+
+        QString label = QFileInfo(filePath).fileName();
+        if (isWebp) {
+            label = QString("[WebP — no preview]\n%1").arg(label);
+        }
+
+        painter.drawText(m_pixmap.rect(), Qt::AlignCenter | Qt::TextWordWrap, label);
     }
 
     setToolTip(filePath);
@@ -39,6 +91,11 @@ void ImageThumbnail::setCellSize(const QSize& size) {
 
 QSize ImageThumbnail::imageDimensions() const {
     return m_pixmap.size();
+}
+
+void ImageThumbnail::releaseImage() {
+    m_pixmap = QPixmap();
+    update();
 }
 
 void ImageThumbnail::setSelected(bool selected) {

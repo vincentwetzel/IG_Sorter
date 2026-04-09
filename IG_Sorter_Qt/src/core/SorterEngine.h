@@ -6,6 +6,7 @@
 #include "DatabaseManager.h"
 #include "DirectoryCleanup.h"
 #include "FileGrouper.h"
+#include "ExtensionFixer.h"
 
 struct SortResult {
     int filesSorted = 0;
