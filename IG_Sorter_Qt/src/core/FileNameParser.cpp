@@ -3,6 +3,37 @@
 #include <QFileInfo>
 #include <QDateTime>
 
+// Extract timestamp from Android screenshot filename
+// Pattern: Screenshot_YYYYMMDD_HHMMSS_App.ext
+static bool parseAndroidScreenshot(const QString& fileName,
+                                    ParsedResult& result,
+                                    const QString& appLabel,
+                                    SourceType sourceEnum,
+                                    const QString& accountLabel) {
+    QRegularExpression androidRegex(
+        "^Screenshot_(\\d{4})(\\d{2})(\\d{2})_(\\d{2})(\\d{2})(\\d{2})_"
+        + QRegularExpression::escape(appLabel) + "\\.");
+    QRegularExpressionMatch androidMatch = androidRegex.match(fileName);
+    if (androidMatch.hasMatch()) {
+        result.accountHandle = accountLabel;
+        result.postDate = QString("%1-%2-%3")
+            .arg(androidMatch.captured(1))
+            .arg(androidMatch.captured(2))
+            .arg(androidMatch.captured(3));
+        result.postTime = QString("%1-%2-%3")
+            .arg(androidMatch.captured(4))
+            .arg(androidMatch.captured(5))
+            .arg(androidMatch.captured(6));
+        result.postTimestamp = result.postDate + "_" + result.postTime;
+        result.sequenceNumber = -1;
+        result.sourceType = "android_screenshot_" + appLabel.toLower();
+        result.sourceEnum = sourceEnum;
+        result.matched = true;
+        return true;
+    }
+    return false;
+}
+
 ParsedResult FileNameParser::parse(const QString& filePath) {
     ParsedResult result;
 
@@ -81,6 +112,25 @@ ParsedResult FileNameParser::parse(const QString& filePath) {
                     result.matched = true;
                 }
             }
+        }
+    }
+
+    // Android screenshot patterns: Screenshot_YYYYMMDD_HHMMSS_App.ext
+    if (!result.matched) {
+        if (parseAndroidScreenshot(fileName, result, "Instagram",
+                                     SourceType::AndroidScreenshot_Instagram,
+                                     "Instagram")) {
+            return result;
+        }
+        if (parseAndroidScreenshot(fileName, result, "Snapchat",
+                                     SourceType::AndroidScreenshot_Snapchat,
+                                     "Snapchat")) {
+            return result;
+        }
+        if (parseAndroidScreenshot(fileName, result, "Chrome",
+                                     SourceType::AndroidScreenshot_Chrome,
+                                     "Chrome")) {
+            return result;
         }
     }
 

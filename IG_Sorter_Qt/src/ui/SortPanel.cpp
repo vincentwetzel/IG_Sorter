@@ -201,6 +201,7 @@ void SortPanel::setAccountInfo(const QString& accountHandle,
                                const QString& irlName,
                                bool isKnown,
                                AccountType type) {
+    Q_UNUSED(irlName);
     m_accountHandle = accountHandle;
     m_irlName = irlName;
     m_isKnown = isKnown;
@@ -218,9 +219,16 @@ void SortPanel::setAccountInfo(const QString& accountHandle,
         m_unknownAddButton->setText("Sort");
         m_unknownAddButton->setObjectName("curatorSortButton");
     } else if (isKnown && !irlName.isEmpty()) {
-        // Personal account with known name — no identification needed
+        // Personal account with known name — show the name but keep input visible
+        // so the user can still enter other names for mixed-person batches
         m_irlNameLabel->setText(irlName);
-        m_unknownAccountWidget->hide();
+        m_unknownAccountWidget->show();
+        m_unknownAccountLabel->setText("Another person?");
+        m_unknownNameEdit->setPlaceholderText("Enter IRL name...");
+        m_unknownNameEdit->clear();
+        m_unknownTypeCombo->hide();
+        m_unknownAddButton->setText("Sort");
+        m_unknownAddButton->setObjectName("curatorSortButton");
         m_openInstagramButton->hide();
     } else if (isKnown && type == AccountType::IrlOnly) {
         // Known source type (TikTok, Twitter, etc.) — just needs a person's name for output

@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Dynamic favorites**: Frequently-sorted names appear as quick-fill buttons above sort-to-folder buttons, auto-scaling to fit available screen width with overflow trimming
 - **Add Person dialog**: Prompts for optional Instagram account when adding a new person, cursor pre-focused on the account field, button text reads "Add Person"
 - **Add Person dialog UI tweaks**: Button text changed from "Add & Sort" to "Add", cursor now starts on the Instagram Account field instead of Name
+- **Input widget permanence rule**: The IRL name text entry field MUST NEVER be hidden or replaced by static text. It stays visible at all times during sorting so users can always enter new names without interruption.
 - **Sub-batch name reset**: Unknown personal accounts reset their name field after each sub-batch so mixed-people batches can be sorted correctly with different names
 - **Progress tracking**: Determinate progress bars during cleanup with file count labels per directory
 - **Log cycling**: Rotating log files (max 5, 5 MB each) at `AppData/IG_Sorter/`, logging all file moves, deletes, renames, skips, and errors

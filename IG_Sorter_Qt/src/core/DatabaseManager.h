@@ -17,6 +17,9 @@ enum class SourceType {
     TikTokSlideshow, // TikTok slideshow download (32-char hex filename)
     Twitter,         // Twitter/X download (YYYYMMDD_HHMMSS.ext)
     Facebook,        // Facebook download (FB_IMG_<unix_ms>.ext)
+    AndroidScreenshot_Instagram,  // Android screenshot from Instagram
+    AndroidScreenshot_Snapchat,   // Android screenshot from Snapchat
+    AndroidScreenshot_Chrome,     // Android screenshot from Chrome
     Unknown          // Unrecognized source
 };
 
