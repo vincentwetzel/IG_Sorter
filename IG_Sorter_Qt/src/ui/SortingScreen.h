@@ -47,6 +47,9 @@ private slots:
     void handleSortToFolder(int folderIndex);
     void handleSkip();
     void handleDeleteSelected();
+    void handleSelectAll(bool selectAll);
+    void handleSelectionChanged(int count);
+    void handleUndo();
     void handleAddUnknownAccount(const QString& account, const QString& irlName,
                                  AccountType type);
     void handleOpenInstagram(const QString& account);
@@ -56,7 +59,10 @@ private:
     void updateHeader();
     void recordNameUsed(const QString& name);
     void updateFavoriteButtons();
+    void updateUndoButton();
     QString getCurrentSourceType() const;
+    // Update all groups matching a newly-added account
+    void updateGroupsForNewAccount(const QString& accountHandle);
 
     QVBoxLayout*      m_mainLayout;
     QLabel*           m_headerLabel;
@@ -64,6 +70,7 @@ private:
     SortPanel*        m_sortPanel;
     QHBoxLayout*      m_buttonLayout;
     QPushButton*      m_backButton;
+    QPushButton*      m_undoButton;
     QPushButton*      m_finishButton;
 
     QList<FileGroup>  m_groups;

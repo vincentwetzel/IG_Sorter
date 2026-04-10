@@ -42,10 +42,12 @@ ParsedResult FileNameParser::parse(const QString& filePath) {
 
     // Instaloader pattern: account_YYYY-MM-DD_HH-MM-SS_N.ext OR account_YYYY-MM-DD_HH-MM-SS.ext
     // e.g. "joeygore1_2026-03-13_15-30-00_1.jpg" or "ben_2025-01-01_12-00-00.jpg"
+    // e.g. "_luke.bowman__2023-07-20_18-45-50_1.jpg" (accounts with underscores)
     // Capture groups: (1)=account, (2)=date, (3)=time, (4)=sequence (may be empty)
     // Note: .* at end required because Qt's match() does full-string matching
+    // Use greedy (.+) to capture account handles that may contain underscores
     QRegularExpression instaloaderRegex(
-        "(.+?)(?=_"
+        "(.+)(?=_"
         "\\d{4}-\\d{2}-\\d{2})_"
         "(\\d{4}-\\d{2}-\\d{2})_"
         "(\\d{2}-\\d{2}-\\d{2})"

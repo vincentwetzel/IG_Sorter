@@ -22,11 +22,18 @@ public:
 
     void setBatchInfo(const QString& current, const QString& total);
 
+    // Select/deselect all thumbnails
+    void selectAll();
+    void deselectAll();
+    bool allSelected() const;
+
 signals:
     void selectionChanged(int selectedCount);
+    void deleteKeyPressed();
 
 protected:
     void resizeEvent(QResizeEvent* event) override;
+    void keyPressEvent(QKeyEvent* event) override;
 
 private:
     void rebuildGrid();

@@ -3,12 +3,14 @@
 #include "utils/FileUtils.h"
 #include "utils/LogManager.h"
 #include <QDir>
+#include <QDirIterator>
+#include <QFileInfo>
 #include <QtConcurrent>
 #include <QFutureSynchronizer>
 #include <QMutex>
 
 SorterEngine::SorterEngine(DatabaseManager* db, QObject* parent)
-    : QObject(parent), m_db(db) {}
+    : QObject(parent), m_db(db), m_cacheDirModTime(0), m_cacheValid(false) {}
 
 bool SorterEngine::initialize(const QString& sourceDir, const QStringList& outputDirs) {
     m_sourceDir = sourceDir;
@@ -78,6 +80,14 @@ CleanupReport SorterEngine::runCleanup() {
 }
 
 QList<FileGroup> SorterEngine::groupFiles() {
+    // Check if we have a valid cache
+    if (isCacheValid()) {
+        LogManager::instance()->info("Using cached grouping results (skipping disk scan)");
+        return m_cachedGroups;
+    }
+
+    LogManager::instance()->info("Cache invalid or missing — performing full disk scan");
+
     // Fix file extensions before grouping so all images load correctly
     ExtensionFixReport fixReport = ExtensionFixer::run(m_sourceDir);
     if (fixReport.filesRenamed > 0) {
@@ -89,6 +99,11 @@ QList<FileGroup> SorterEngine::groupFiles() {
     FileGrouper grouper(m_db);
     QList<FileGroup> groups = grouper.group(m_sourceDir);
     LogManager::instance()->info(QString("Found %1 groups").arg(groups.size()));
+
+    // Cache the results
+    m_cachedGroups = groups;
+    updateCache(m_sourceDir);
+
     return groups;
 }
 
@@ -96,11 +111,15 @@ SortResult SorterEngine::sortFiles(const QStringList& filePaths,
                                    const QString& accountHandle,
                                    const QString& irlName,
                                    AccountType accountType,
-                                   const QString& outputDir) {
+                                   const QString& outputDir,
+                                   const QString& outputFolderName) {
     Q_UNUSED(accountHandle);
     Q_UNUSED(accountType);
 
     SortResult result;
+    SortOperation op;
+    op.outputFolderName = outputFolderName;
+    op.irlName = irlName;
 
     LogManager::instance()->info(
         QString("Sorting %1 files to %2 as '%3'")
@@ -122,6 +141,10 @@ SortResult SorterEngine::sortFiles(const QStringList& filePaths,
 
         if (!destPath.isEmpty()) {
             result.filesSorted++;
+            SortOperation::FileMove move;
+            move.sourcePath = filePath;
+            move.destPath = destPath;
+            op.fileMoves.append(move);
         } else {
             result.errors++;
             result.errorMessages.append(
@@ -129,5 +152,98 @@ SortResult SorterEngine::sortFiles(const QStringList& filePaths,
         }
     }
 
+    // Push to undo stack if any files were sorted
+    if (op.fileMoves.size() > 0) {
+        m_sortHistory.append(op);
+        // Invalidate cache since source directory contents changed
+        m_cacheValid = false;
+    }
+
     return result;
+}
+
+QStringList SorterEngine::undoLastSort() {
+    if (m_sortHistory.isEmpty()) return {};
+
+    SortOperation op = m_sortHistory.takeLast();
+    int successCount = 0;
+    QStringList restoredPaths;  // track restored file paths for reporting
+
+    // Move files back in reverse order using their ORIGINAL filenames
+    for (int i = op.fileMoves.size() - 1; i >= 0; --i) {
+        const auto& move = op.fileMoves[i];
+        QFileInfo destFi(move.destPath);
+        QFileInfo origFi(move.sourcePath);
+        QString destDir = origFi.absolutePath();
+        QString originalFileName = origFi.fileName();  // Use the ORIGINAL filename
+
+        QString errorMsg;
+        QString restoredPath = FileUtils::safeMove(move.destPath, destDir, originalFileName, &errorMsg);
+        if (!restoredPath.isEmpty()) {
+            successCount++;
+            restoredPaths.append(restoredPath);
+        } else {
+            LogManager::instance()->warning(
+                QString("Undo failed for %1: %2").arg(destFi.fileName(), errorMsg));
+        }
+    }
+
+    LogManager::instance()->info(
+        QString("Undo: restored %1/%2 files").arg(successCount).arg(op.fileMoves.size()));
+
+    return restoredPaths;
+}
+
+void SorterEngine::invalidateCache() {
+    m_cacheValid = false;
+}
+
+void SorterEngine::updateCacheForAccount(const QString& accountHandle) {
+    if (!m_db || accountHandle.isEmpty() || !m_cacheValid) return;
+
+    // Look up the account in the database
+    if (!m_db->hasAccount(accountHandle)) return;
+
+    QString irlName = m_db->getIrlName(accountHandle);
+    AccountType type = m_db->getEntry(accountHandle).type;
+
+    // Update all matching cached groups
+    for (auto& group : m_cachedGroups) {
+        if (group.accountHandle == accountHandle) {
+            group.isKnown = true;
+            group.accountType = type;
+            // For Curator and IrlOnly, do NOT set irlName — the account is the photographer,
+            // but the name field is for the model (changes per batch)
+            if (type != AccountType::Curator && type != AccountType::IrlOnly) {
+                group.irlName = irlName;
+            }
+        }
+    }
+}
+
+bool SorterEngine::isCacheValid() const {
+    if (!m_cacheValid) return false;
+    if (m_cacheSourceDir != m_sourceDir) return false;
+
+    // Check if source directory still exists
+    QFileInfo dirInfo(m_sourceDir);
+    if (!dirInfo.exists() || !dirInfo.isDir()) return false;
+
+    // Check if directory modification time has changed
+    // This is a fast check that doesn't require scanning files
+    qint64 currentModTime = dirInfo.lastModified().toMSecsSinceEpoch();
+    if (currentModTime != m_cacheDirModTime) return false;
+
+    return true;
+}
+
+void SorterEngine::updateCache(const QString& sourceDir) {
+    m_cacheSourceDir = sourceDir;
+
+    QFileInfo dirInfo(sourceDir);
+    if (dirInfo.exists()) {
+        m_cacheDirModTime = dirInfo.lastModified().toMSecsSinceEpoch();
+    }
+
+    m_cacheValid = true;
 }

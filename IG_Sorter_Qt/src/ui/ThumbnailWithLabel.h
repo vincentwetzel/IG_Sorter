@@ -22,5 +22,6 @@ signals:
 private:
     QVBoxLayout*     m_layout;
     ImageThumbnail*  m_thumbnail;
+    QLabel*          m_dimensionsLabel;
     QLabel*          m_nameLabel;
 };

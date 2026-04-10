@@ -297,8 +297,9 @@ def get_ig_name_from_filename(full_file_path):
     basename = os.path.basename(str(full_file_path))
     # Case 1: Instagram batch downloader
     # EXAMPLE: jefe004_2020-07-24_18-16-11_1
-    if re.search(r"^.+?(?=_\d\d\d\d-\d\d)", basename) is not None:
-        return re.search(r"^.+?(?=_\d\d\d\d-\d\d)", basename).group(0)
+    # EXAMPLE: _luke.bowman__2023-07-20_18-45-50_1 (accounts with underscores)
+    if re.search(r"^.+(?=_\d\d\d\d-\d\d)", basename) is not None:
+        return re.search(r"^.+(?=_\d\d\d\d-\d\d)", basename).group(0)
     # Case 2: Screenshots
     # EXAMPLE: IMG_0005.png (iPad screenshot)
     elif "Ipad Screenshot" in basename or re.search(r"^IMG_[0-9]{4}\.", basename) is not None:

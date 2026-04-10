@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Grouping cache**: SorterEngine caches grouping results and skips redundant disk scans when source directory hasn't changed, dramatically improving sorting screen load time on subsequent runs
+- **Select All / Deselect All button**: Positioned between Skip Batch and Delete Selected in the sort panel. Automatically toggles between "Select All" and "Deselect All" based on current selection state
+- **Pixel dimensions display**: Each thumbnail in the sorting grid now shows its dimensions (e.g. `720x720`) above the filename hyperlink
+- **Sorting header progress**: Combined "sorted" and "remaining" into a single progress indicator (`86 / 2086 sorted`)
+
+### Fixed
+- **AddPersonDialog no longer shown unnecessarily**: For Curator and IrlOnly accounts, the dialog is now skipped when the model name already exists in the database and there's no account to link
+- **Curator/IrlOnly model name separation**: The name field for Curator and IrlOnly accounts now correctly represents the MODEL in the photos (per-batch), not the account owner (photographer). After adding a curator, the text field clears so the user can enter the model's name
+- **Button text preservation**: The "Add Person" button for Curator accounts no longer changes to "Sort", allowing users to add new models to the database during sorting
+- **Cache invalidation on DB changes**: Grouping cache is invalidated whenever accounts are added to the database, ensuring subsequent batches correctly recognize known accounts
+- **Select All button toggle**: Fixed Deselect All not working — button now correctly reads current selection state and emits the appropriate signal
+- **Equal button widths**: Skip Batch, Select All, and Delete Selected buttons now have fixed equal widths for proper centering
+
+### Changed
+- **Targeted cache updates**: Instead of invalidating the entire grouping cache when a new account is added, only the affected groups are updated in-place (O(n) where n = number of groups)
+- **Curator/IrlOnly name handling**: For these account types, `irlName` is no longer persisted to the group state or UI. The text field is cleared after each batch to allow entering a different model name
+- **FileGrouper optimization**: For Curator and IrlOnly accounts found in the database, `irlName` is no longer set since the account is the photographer, not the model
+
 ### Added — Qt C++ Desktop App (`IG_Sorter_Qt/`)
 - Modern Qt 6 C++ GUI replacing the CLI `Instagram_Sorter.py`
 - Multi-screen flow: Menu → Cleanup → Sorting (batch preview) → Report

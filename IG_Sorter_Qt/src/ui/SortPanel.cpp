@@ -1,5 +1,6 @@
 #include "ui/SortPanel.h"
 #include "utils/ConfigManager.h"
+#include <algorithm>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLayoutItem>
@@ -14,57 +15,102 @@
 #include <QUrl>
 #include <QTimer>
 
+// Custom completer that strips "(account)" suffix on insertion
+// and treats the entire input as a single token (no word splitting)
+class PersonCompleter : public QCompleter {
+public:
+    using QCompleter::QCompleter;
+
+    QString pathFromIndex(const QModelIndex& index) const override {
+        QString text = QCompleter::pathFromIndex(index);
+        int parenIdx = text.indexOf('(');
+        if (parenIdx > 0) {
+            return text.left(parenIdx).trimmed();
+        }
+        return text;
+    }
+
+    // Don't split on underscores — treat entire input as one token
+    QStringList splitPath(const QString& path) const override {
+        return QStringList(path);
+    }
+};
+
 SortPanel::SortPanel(QWidget* parent)
     : QWidget(parent), m_isKnown(true), m_accountType(AccountType::Personal),
-      m_db(nullptr)
+      m_db(nullptr), m_allSelected(false)
 {
     m_mainLayout = new QVBoxLayout(this);
-    m_mainLayout->setSpacing(10);
-    m_mainLayout->setContentsMargins(10, 10, 10, 10);
+    m_mainLayout->setSpacing(8);
+    m_mainLayout->setContentsMargins(8, 8, 8, 8);
 
-    // Name completer
+    // Name completer — QStringListModel with "Name (Account)" format
+    // PersonCompleter automatically strips "(account)" on insertion
     m_completerModel = new QStringListModel(this);
-    m_completer = new QCompleter(m_completerModel, this);
+    m_completer = new PersonCompleter(m_completerModel, this);
     m_completer->setCaseSensitivity(Qt::CaseInsensitive);
     m_completer->setCompletionMode(QCompleter::PopupCompletion);
     m_completer->setWrapAround(false);
+    // Substring matching (not just prefix)
+    m_completer->setFilterMode(Qt::MatchContains);
 
-    // Selected count
-    m_selectedCountLabel = new QLabel("0 files selected", this);
-    m_selectedCountLabel->setAlignment(Qt::AlignCenter);
-    QFont countFont = m_selectedCountLabel->font();
-    countFont.setPointSize(12);
-    m_selectedCountLabel->setFont(countFont);
-    m_mainLayout->addWidget(m_selectedCountLabel);
+    // Skip and Delete buttons side by side with selected count
+    auto* actionRow = new QHBoxLayout();
+    actionRow->setSpacing(8);
 
-    // Skip button
+    actionRow->addStretch();
+
     m_skipButton = new QPushButton("Skip Batch", this);
-    m_skipButton->setMinimumHeight(40);
+    m_skipButton->setMinimumHeight(36);
+    m_skipButton->setFixedWidth(140);
     QFont btnFont = m_skipButton->font();
-    btnFont.setPointSize(12);
+    btnFont.setPointSize(11);
     m_skipButton->setFont(btnFont);
-    m_mainLayout->addWidget(m_skipButton);
+    actionRow->addWidget(m_skipButton);
 
     connect(m_skipButton, &QPushButton::clicked,
             this, &SortPanel::skipClicked);
 
-    // Delete button
+    m_selectAllButton = new QPushButton("Select All", this);
+    m_selectAllButton->setMinimumHeight(36);
+    m_selectAllButton->setFixedWidth(140);
+    m_selectAllButton->setFont(btnFont);
+    actionRow->addWidget(m_selectAllButton);
+
+    connect(m_selectAllButton, &QPushButton::clicked, this, [this]() {
+        // Use m_allSelected which is updated externally via updateSelectAllButtonText
+        emit selectAllClicked(!m_allSelected);
+    });
+
     m_deleteButton = new QPushButton("Delete Selected", this);
-    m_deleteButton->setMinimumHeight(40);
+    m_deleteButton->setMinimumHeight(36);
+    m_deleteButton->setFixedWidth(140);
     m_deleteButton->setFont(btnFont);
     m_deleteButton->setStyleSheet("QPushButton { color: #d32f2f; }");
-    m_mainLayout->addWidget(m_deleteButton);
+    actionRow->addWidget(m_deleteButton);
 
     connect(m_deleteButton, &QPushButton::clicked,
             this, &SortPanel::deleteSelectedClicked);
 
+    actionRow->addStretch();
+
+    m_selectedCountLabel = new QLabel("0 files selected", this);
+    m_selectedCountLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    QFont countFont = m_selectedCountLabel->font();
+    countFont.setPointSize(10);
+    m_selectedCountLabel->setFont(countFont);
+    actionRow->addWidget(m_selectedCountLabel);
+
+    m_mainLayout->addLayout(actionRow);
+
     // IRL name display row (label + Open Instagram button)
+    // Only shown for unknown accounts — known accounts already show the name in the header
     auto* irlRowLayout = new QHBoxLayout();
     irlRowLayout->setSpacing(10);
     m_irlNameLabel = new QLabel(this);
     m_irlNameLabel->setAlignment(Qt::AlignCenter);
     QFont irlFont = m_irlNameLabel->font();
-    irlFont.setPointSize(16);
+    irlFont.setPointSize(14);
     irlFont.setBold(true);
     m_irlNameLabel->setFont(irlFont);
     irlRowLayout->addWidget(m_irlNameLabel, 1);
@@ -103,7 +149,6 @@ SortPanel::SortPanel(QWidget* parent)
 
     connect(m_unknownAddButton, &QPushButton::clicked, this, [this]() {
         QString irlName = m_unknownNameEdit->text().trimmed();
-        if (irlName.isEmpty()) return;
 
         if (m_accountType == AccountType::Curator || m_accountType == AccountType::IrlOnly) {
             // Curator or download source (Twitter, TikTok, etc.) — resolve name,
@@ -158,30 +203,66 @@ void SortPanel::setDatabaseManager(DatabaseManager* db) {
 
 void SortPanel::refreshCompleter() {
     if (!m_db) {
+        m_allCompleterEntries.clear();
+        m_allIrlNames.clear();
         m_completerModel->setStringList(QStringList());
         return;
     }
 
-    QStringList names;
+    QSet<QString> seenNames;  // deduplicate by IRL name
+    QList<QPair<QString, QString>> pairs;
+
     for (const auto& entry : m_db->allEntries()) {
-        if (!entry.irlName.isEmpty() && !names.contains(entry.irlName, Qt::CaseInsensitive)) {
-            names.append(entry.irlName);
+        if (entry.irlName.isEmpty()) continue;
+        if (seenNames.contains(entry.irlName.toLower())) continue;
+        seenNames.insert(entry.irlName.toLower());
+
+        QString display;
+        if (!entry.account.isEmpty()) {
+            display = QString("%1 (%2)").arg(entry.irlName, entry.account);
+        } else {
+            display = entry.irlName;
         }
+        pairs.append(qMakePair(display, entry.irlName));
     }
-    names.sort(Qt::CaseInsensitive);
-    m_completerModel->setStringList(names);
+
+    std::sort(pairs.begin(), pairs.end(),
+        [](const QPair<QString, QString>& a, const QPair<QString, QString>& b) {
+            return a.first.compare(b.first, Qt::CaseInsensitive) < 0;
+        });
+
+    m_allCompleterEntries.clear();
+    m_allIrlNames.clear();
+    for (const auto& p : pairs) {
+        m_allCompleterEntries.append(p.first);
+        m_allIrlNames.append(p.second);
+    }
+
+    m_completerModel->setStringList(m_allCompleterEntries);
 }
 
 bool SortPanel::eventFilter(QObject* watched, QEvent* event) {
     if (watched == m_unknownNameEdit && event->type() == QEvent::KeyPress) {
         auto* keyEvent = static_cast<QKeyEvent*>(event);
         if (keyEvent->key() == Qt::Key_Tab) {
-            // Accept the first completion if available
-            QStringListModel* model = qobject_cast<QStringListModel*>(m_completer->completionModel());
-            if (model && model->rowCount() > 0) {
-                // Pick the first match from the filtered completion model
-                m_unknownNameEdit->setText(model->stringList().first());
-                m_unknownNameEdit->setCursorPosition(m_unknownNameEdit->text().length());
+            QString currentText = m_unknownNameEdit->text().trimmed();
+            if (currentText.isEmpty()) {
+                return true;  // Nothing to complete
+            }
+
+            // Find the first matching entry (case-insensitive substring)
+            QString lowerText = currentText.toLower();
+            for (const auto& entry : m_allCompleterEntries) {
+                if (entry.toLower().contains(lowerText)) {
+                    // Strip the "(account)" suffix — just insert the IRL name
+                    int parenIdx = entry.indexOf('(');
+                    QString irlName = (parenIdx > 0)
+                        ? entry.left(parenIdx).trimmed()
+                        : entry;
+                    m_unknownNameEdit->setText(irlName);
+                    m_unknownNameEdit->setCursorPosition(irlName.length());
+                    return true;
+                }
             }
             return true;
         }
@@ -201,7 +282,6 @@ void SortPanel::setAccountInfo(const QString& accountHandle,
                                const QString& irlName,
                                bool isKnown,
                                AccountType type) {
-    Q_UNUSED(irlName);
     m_accountHandle = accountHandle;
     m_irlName = irlName;
     m_isKnown = isKnown;
@@ -210,49 +290,70 @@ void SortPanel::setAccountInfo(const QString& accountHandle,
     if (type == AccountType::Curator) {
         // Curator accounts post photos of many people — user must identify each batch
         m_irlNameLabel->setText("Curator: " + accountHandle);
+        m_irlNameLabel->show();
         m_unknownAccountWidget->show();
         m_unknownAccountLabel->setText("Who is in these photos?");
         m_unknownNameEdit->setPlaceholderText("Enter IRL name for output files...");
+        // Clear the text field — for Curator accounts, the name field is for the MODEL,
+        // not the curator. Keep button as "Add Person" so user can add new models to DB.
         m_unknownNameEdit->clear();
         m_unknownTypeCombo->hide();
         m_openInstagramButton->show();
-        m_unknownAddButton->setText("Sort");
-        m_unknownAddButton->setObjectName("curatorSortButton");
-    } else if (isKnown && !irlName.isEmpty()) {
-        // Personal account with known name — show the name but keep input visible
-        // so the user can still enter other names for mixed-person batches
-        m_irlNameLabel->setText(irlName);
-        m_unknownAccountWidget->show();
-        m_unknownAccountLabel->setText("Another person?");
-        m_unknownNameEdit->setPlaceholderText("Enter IRL name...");
-        m_unknownNameEdit->clear();
-        m_unknownTypeCombo->hide();
-        m_unknownAddButton->setText("Sort");
-        m_unknownAddButton->setObjectName("curatorSortButton");
-        m_openInstagramButton->hide();
-    } else if (isKnown && type == AccountType::IrlOnly) {
-        // Known source type (TikTok, Twitter, etc.) — just needs a person's name for output
-        m_irlNameLabel->setText(accountHandle);
+        m_unknownAddButton->setText("Add Person");
+        m_unknownAddButton->setObjectName("addPersonButton");
+    } else if (type == AccountType::IrlOnly) {
+        // IrlOnly source type (TikTok, Twitter, etc.) — the account is the photographer,
+        // but the name field is for the MODEL in the photos (changes per batch).
+        // NEVER pre-fill the name — always let user enter the model.
+        m_irlNameLabel->hide();
         m_unknownAccountWidget->show();
         m_unknownAccountLabel->setText("Who is in these photos?");
         m_unknownNameEdit->setPlaceholderText("Enter IRL name...");
-        m_unknownNameEdit->clear();
+        if (isKnown && !irlName.isEmpty()) {
+            // Account is known and name provided — use it for this batch
+            m_unknownNameEdit->setText(irlName);
+        } else {
+            // Unknown account or no name — clear field for user input
+            m_unknownNameEdit->clear();
+        }
+        m_unknownAddButton->setText("Enter");
+        m_unknownAddButton->setObjectName("curatorSortButton");
         m_unknownTypeCombo->hide();
         m_openInstagramButton->hide();
-        m_unknownAddButton->setText("Add Person");
-        m_unknownAddButton->setObjectName("addPersonButton");
+    } else if (isKnown && !irlName.isEmpty()) {
+        // Personal account with known name — pre-fill the name field
+        m_irlNameLabel->setText(accountHandle);
+        m_irlNameLabel->show();
+        m_unknownAccountWidget->show();
+        m_unknownAccountLabel->setText("Who is in these photos?");
+        m_unknownNameEdit->setPlaceholderText("Enter IRL name...");
+        m_unknownNameEdit->setText(irlName);
+        m_unknownTypeCombo->hide();
+        m_unknownAddButton->setText("Sort");
+        m_unknownAddButton->setObjectName("curatorSortButton");
+        m_openInstagramButton->show();
     } else {
         // Unknown personal account — user must add to database
         m_irlNameLabel->setText("Unknown account: " + accountHandle);
+        m_irlNameLabel->show();
         m_unknownAccountWidget->show();
-        m_unknownAccountLabel->setText("Unknown: " + accountHandle);
+        m_unknownAccountLabel->setText("Who is in these photos?");
         m_unknownNameEdit->setPlaceholderText("Enter IRL name...");
-        m_unknownNameEdit->clear();
         m_unknownTypeCombo->show();
         m_unknownAddButton->setText("Add Person");
         m_unknownAddButton->setObjectName("addPersonButton");
         m_openInstagramButton->show();
     }
+}
+
+// Call this to explicitly clear the name input (used when loading new batches)
+void SortPanel::clearNameInput() {
+    m_unknownNameEdit->clear();
+}
+
+// Set the name input field to a specific value
+void SortPanel::setNameInput(const QString& name) {
+    m_unknownNameEdit->setText(name);
 }
 
 void SortPanel::clearSelections() {
@@ -264,6 +365,16 @@ void SortPanel::clearSelections() {
 
 void SortPanel::updateSelectedCount(int count) {
     m_selectedCountLabel->setText(QString("%1 files selected").arg(count));
+    // Note: Button text update is handled by SortingScreen via updateSelectAllButtonText()
+}
+
+void SortPanel::updateSelectAllButtonText(bool allSelected) {
+    m_allSelected = allSelected;
+    if (allSelected) {
+        m_selectAllButton->setText("Deselect All");
+    } else {
+        m_selectAllButton->setText("Select All");
+    }
 }
 
 bool SortPanel::isCuratorNameResolved() const {

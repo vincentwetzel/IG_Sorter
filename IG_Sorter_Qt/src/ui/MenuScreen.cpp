@@ -12,18 +12,18 @@ MenuScreen::MenuScreen(QWidget* parent)
     : QWidget(parent)
 {
     auto* mainLayout = new QVBoxLayout(this);
-    mainLayout->setSpacing(20);
-    mainLayout->setContentsMargins(40, 60, 40, 40);
+    mainLayout->setSpacing(12);
+    mainLayout->setContentsMargins(30, 30, 30, 30);
 
-    // Spacer at top
-    mainLayout->addStretch();
+    // Small spacer at top
+    mainLayout->addSpacing(20);
 
     // Title
     m_titleLabel = new QLabel("IG Sorter", this);
     m_titleLabel->setAlignment(Qt::AlignCenter);
     m_titleLabel->setObjectName("menuTitle");
     QFont titleFont = m_titleLabel->font();
-    titleFont.setPointSize(28);
+    titleFont.setPointSize(36);
     titleFont.setBold(true);
     m_titleLabel->setFont(titleFont);
     mainLayout->addWidget(m_titleLabel);
@@ -33,12 +33,9 @@ MenuScreen::MenuScreen(QWidget* parent)
     m_subtitleLabel->setAlignment(Qt::AlignCenter);
     m_subtitleLabel->setObjectName("menuSubtitle");
     QFont subFont = m_subtitleLabel->font();
-    subFont.setPointSize(14);
+    subFont.setPointSize(16);
     m_subtitleLabel->setFont(subFont);
     mainLayout->addWidget(m_subtitleLabel);
-
-    // Spacer
-    mainLayout->addSpacing(40);
 
     // Config status
     m_configStatusLabel = new QLabel(this);
@@ -46,40 +43,55 @@ MenuScreen::MenuScreen(QWidget* parent)
     m_configStatusLabel->setTextFormat(Qt::RichText);
     m_configStatusLabel->setTextInteractionFlags(Qt::TextBrowserInteraction);
     QFont configFont = m_configStatusLabel->font();
-    configFont.setPointSize(11);
+    configFont.setPointSize(12);
     m_configStatusLabel->setFont(configFont);
     mainLayout->addWidget(m_configStatusLabel);
 
     // Initial refresh
     refreshConfigStatus();
 
-    // Spacer
-    mainLayout->addSpacing(40);
+    // Spacer before buttons
+    mainLayout->addSpacing(30);
 
-    // Buttons
-    auto* buttonLayout = new QHBoxLayout();
-    buttonLayout->setSpacing(20);
+    // Buttons — centered vertical layout
+    auto* buttonLayout = new QVBoxLayout();
+    buttonLayout->setSpacing(16);
+    buttonLayout->setAlignment(Qt::AlignCenter);
 
     m_startButton = new QPushButton("Start Sorting", this);
-    m_startButton->setMinimumSize(200, 50);
+    m_startButton->setMinimumSize(320, 70);
+    m_startButton->setMaximumSize(400, 80);
     QFont btnFont = m_startButton->font();
-    btnFont.setPointSize(14);
+    btnFont.setPointSize(18);
+    btnFont.setBold(true);
     m_startButton->setFont(btnFont);
+    m_startButton->setObjectName("startButton");
     buttonLayout->addWidget(m_startButton);
 
+    m_cleanUpAccountsButton = new QPushButton("Clean Up Accounts", this);
+    m_cleanUpAccountsButton->setMinimumSize(320, 70);
+    m_cleanUpAccountsButton->setMaximumSize(400, 80);
+    m_cleanUpAccountsButton->setFont(btnFont);
+    m_cleanUpAccountsButton->setObjectName("cleanUpAccountsButton");
+    buttonLayout->addWidget(m_cleanUpAccountsButton);
+
     m_settingsButton = new QPushButton("Settings", this);
-    m_settingsButton->setMinimumSize(200, 50);
+    m_settingsButton->setMinimumSize(320, 70);
+    m_settingsButton->setMaximumSize(400, 80);
     m_settingsButton->setFont(btnFont);
+    m_settingsButton->setObjectName("settingsButton");
     buttonLayout->addWidget(m_settingsButton);
 
     mainLayout->addLayout(buttonLayout);
 
-    // Spacer at bottom
+    // Small spacer at bottom
     mainLayout->addStretch();
 
     // Connect signals
     connect(m_startButton, &QPushButton::clicked,
             this, &MenuScreen::startSortingClicked);
+    connect(m_cleanUpAccountsButton, &QPushButton::clicked,
+            this, &MenuScreen::cleanUpAccountsClicked);
     connect(m_settingsButton, &QPushButton::clicked,
             this, &MenuScreen::settingsClicked);
     connect(m_configStatusLabel, &QLabel::linkActivated,

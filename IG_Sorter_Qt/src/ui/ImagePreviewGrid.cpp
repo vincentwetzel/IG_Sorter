@@ -3,12 +3,14 @@
 #include "ui/ImageThumbnail.h"
 #include <QGridLayout>
 #include <QResizeEvent>
+#include <QKeyEvent>
 
 ImagePreviewGrid::ImagePreviewGrid(QWidget* parent)
     : QWidget(parent), m_gridLayout(new QGridLayout(this))
 {
     m_gridLayout->setSpacing(4);
     m_gridLayout->setContentsMargins(4, 4, 4, 4);
+    setFocusPolicy(Qt::StrongFocus);  // Allow keyboard focus for DELETE key
 }
 
 void ImagePreviewGrid::setImages(const QStringList& filePaths) {
@@ -28,6 +30,7 @@ void ImagePreviewGrid::setImages(const QStringList& filePaths) {
     }
 
     rebuildGrid();
+    setFocus();  // Set focus to grid so DELETE key works immediately
 }
 
 void ImagePreviewGrid::rebuildGrid() {
@@ -107,6 +110,18 @@ void ImagePreviewGrid::resizeEvent(QResizeEvent* event) {
     rebuildGrid();
 }
 
+void ImagePreviewGrid::keyPressEvent(QKeyEvent* event) {
+    if (event->key() == Qt::Key_Delete) {
+        // Only emit delete if there are selected items
+        if (!selectedFilePaths().isEmpty()) {
+            emit deleteKeyPressed();
+        }
+    } else {
+        // Pass other keys to parent
+        QWidget::keyPressEvent(event);
+    }
+}
+
 QStringList ImagePreviewGrid::selectedFilePaths() const {
     QStringList selected;
     for (const auto* item : m_items) {
@@ -172,4 +187,29 @@ bool ImagePreviewGrid::hasImages() const {
 void ImagePreviewGrid::setBatchInfo(const QString& current, const QString& total) {
     Q_UNUSED(current);
     Q_UNUSED(total);
+}
+
+void ImagePreviewGrid::selectAll() {
+    for (auto* item : m_items) {
+        item->thumbnail()->setSelected(true);
+    }
+    int selectedCount = m_items.size();
+    emit selectionChanged(selectedCount);
+}
+
+void ImagePreviewGrid::deselectAll() {
+    for (auto* item : m_items) {
+        item->thumbnail()->setSelected(false);
+    }
+    emit selectionChanged(0);
+}
+
+bool ImagePreviewGrid::allSelected() const {
+    if (m_items.isEmpty()) return false;
+    for (const auto* item : m_items) {
+        if (!item->thumbnail()->isSelected()) {
+            return false;
+        }
+    }
+    return true;
 }

@@ -162,13 +162,33 @@ bool DatabaseManager::updateEntry(const QString& oldAccount, const QString& newA
                                   const QString& newName, AccountType newType) {
     QString key = oldAccount.toLower();
     if (!m_accountIndex.contains(key)) {
+        LogManager::instance()->warning(
+            QString("updateEntry: account '%1' not found in index").arg(oldAccount));
         return false;
     }
 
     int index = m_accountIndex.value(key);
+    return updateEntryByIndex(index, newAccount, newName, newType);
+}
+
+bool DatabaseManager::updateEntryByIndex(int index, const QString& newAccount,
+                                         const QString& newName, AccountType newType) {
+    if (index < 0 || index >= m_entries.size()) {
+        LogManager::instance()->error(
+            QString("updateEntryByIndex: index %1 out of range").arg(index));
+        return false;
+    }
+
+    QString oldAccount = m_entries[index].account;
     m_entries[index].account = newAccount.isEmpty() ? QString() : newAccount.toLower();
     m_entries[index].irlName = newName;
     m_entries[index].type = newType;
+
+    LogManager::instance()->info(
+        QString("Updated entry: '%1' → '%2' (%3)")
+            .arg(oldAccount.isEmpty() ? "(no account)" : oldAccount,
+                 newName,
+                 accountTypeToString(newType)));
 
     // Rebuild index
     m_accountIndex.clear();

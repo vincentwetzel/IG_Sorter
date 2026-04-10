@@ -36,6 +36,12 @@ public:
     // Refresh the name completer from the database (call after DB changes)
     void refreshCompleter();
 
+    // Explicitly clear the name input field (used when loading new batches)
+    void clearNameInput();
+
+    // Set the name input field to a specific value
+    void setNameInput(const QString& name);
+
     // Check if curator name has been entered
     bool isCuratorNameResolved() const;
     QString getCuratorResolvedName() const;
@@ -46,10 +52,14 @@ public:
     // Set quick-fill name buttons for IrlOnly sources (top N names)
     void setQuickFillNames(const QStringList& names);
 
+    // Update the select all button text based on current selection state
+    void updateSelectAllButtonText(bool allSelected);
+
 signals:
     void sortToFolderClicked(int folderIndex);
     void skipClicked();
     void deleteSelectedClicked();
+    void selectAllClicked(bool selectAll);
     void addUnknownAccount(const QString& account, const QString& irlName, AccountType type);
     void openInstagramClicked(const QString& account);
     // For curator accounts — resolve who is in the photos (no DB change)
@@ -86,6 +96,7 @@ private:
 
     QVector<OutputFolderConfig> m_outputFolders;
     QList<QPushButton*>         m_folderButtons;
+    QPushButton*                m_selectAllButton;
     QPushButton*                m_skipButton;
     QPushButton*                m_deleteButton;
 
@@ -96,4 +107,9 @@ private:
     DatabaseManager* m_db;
     QCompleter*      m_completer;
     QStringListModel* m_completerModel;
+    // Full unfiltered list of display strings: "Sean Dawn (eurotunnell)"
+    QStringList m_allCompleterEntries;
+    // Parallel list of IRL names (what gets inserted on selection)
+    QStringList m_allIrlNames;
+    bool m_allSelected;  // updated externally via updateSelectAllButtonText
 };

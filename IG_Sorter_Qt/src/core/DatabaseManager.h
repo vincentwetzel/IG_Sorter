@@ -48,6 +48,8 @@ public:
     bool        removeEntry(const QString& account);
     bool        updateEntry(const QString& oldAccount, const QString& newAccount,
                             const QString& newName, AccountType newType);
+    bool        updateEntryByIndex(int index, const QString& newAccount,
+                                   const QString& newName, AccountType newType);
     bool        hasIrlName(const QString& name) const;
 
     static QString accountTypeToString(AccountType type);

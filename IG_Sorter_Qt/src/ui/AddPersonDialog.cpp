@@ -4,17 +4,31 @@
 #include <QFormLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QComboBox>
 #include <QPushButton>
 
-AddPersonDialog::AddPersonDialog(const QString& personName, QWidget* parent)
+AddPersonDialog::AddPersonDialog(const QString& personName, const QString& accountHandle,
+                                 AccountType suggestedType, QWidget* parent)
     : QDialog(parent)
 {
     setWindowTitle("Add Person to Database");
     setMinimumWidth(400);
     setupUI();
+
+    // Set suggested type
+    switch (suggestedType) {
+    case AccountType::Curator:  m_typeCombo->setCurrentIndex(1); break;
+    case AccountType::IrlOnly:  m_typeCombo->setCurrentIndex(2); break;
+    default: break;
+    }
+
     m_irlNameEdit->setText(personName);
     m_irlNameEdit->selectAll();
-    m_accountEdit->setFocus();
+    if (!accountHandle.isEmpty()) {
+        m_accountEdit->setText(accountHandle);
+    } else {
+        m_accountEdit->setFocus();
+    }
 }
 
 void AddPersonDialog::setupUI() {
@@ -30,12 +44,18 @@ void AddPersonDialog::setupUI() {
     formLayout->setSpacing(10);
 
     m_irlNameEdit = new QLineEdit(this);
-    m_irlNameEdit->setPlaceholderText("IRL name (required)");
+    m_irlNameEdit->setPlaceholderText("IRL name (optional)");
     formLayout->addRow("Name:", m_irlNameEdit);
 
     m_accountEdit = new QLineEdit(this);
     m_accountEdit->setPlaceholderText("e.g. zane_carter — leave blank if unknown");
-    formLayout->addRow("Instagram account (optional):", m_accountEdit);
+    formLayout->addRow("Instagram account:", m_accountEdit);
+
+    m_typeCombo = new QComboBox(this);
+    m_typeCombo->addItem("Personal");
+    m_typeCombo->addItem("Curator");
+    m_typeCombo->addItem("IRL Only");
+    formLayout->addRow("Account type:", m_typeCombo);
 
     m_layout->addLayout(formLayout);
 
@@ -57,4 +77,12 @@ QString AddPersonDialog::irlName() const {
 
 QString AddPersonDialog::accountHandle() const {
     return m_accountEdit->text().trimmed();
+}
+
+AccountType AddPersonDialog::accountType() const {
+    switch (m_typeCombo->currentIndex()) {
+    case 1: return AccountType::Curator;
+    case 2: return AccountType::IrlOnly;
+    default: return AccountType::Personal;
+    }
 }

@@ -29,6 +29,7 @@ set(SOURCES
     src/ui/MainWindow.cpp
     src/ui/MenuScreen.cpp
     src/ui/CleanupScreen.cpp
+    src/ui/CleanUpAccountsScreen.cpp
     src/ui/SortingScreen.cpp
     src/ui/ReportScreen.cpp
     src/ui/SettingsDialog.cpp
@@ -56,6 +57,7 @@ set(HEADERS
     src/ui/MainWindow.h
     src/ui/MenuScreen.h
     src/ui/CleanupScreen.h
+    src/ui/CleanUpAccountsScreen.h
     src/ui/SortingScreen.h
     src/ui/ReportScreen.h
     src/ui/SettingsDialog.h

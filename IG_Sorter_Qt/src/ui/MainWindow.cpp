@@ -1,6 +1,7 @@
 #include "ui/MainWindow.h"
 #include "ui/MenuScreen.h"
 #include "ui/CleanupScreen.h"
+#include "ui/CleanUpAccountsScreen.h"
 #include "ui/SortingScreen.h"
 #include "ui/ReportScreen.h"
 #include "ui/SettingsDialog.h"
@@ -89,13 +90,17 @@ MainWindow::MainWindow(QWidget* parent)
     // Create screens
     m_menuScreen = new MenuScreen(this);
     m_cleanupScreen = new CleanupScreen(this);
+    m_cleanUpAccountsScreen = new CleanUpAccountsScreen(this);
     m_sortingScreen = new SortingScreen(this);
     m_reportScreen = new ReportScreen(this);
 
-    m_stackedWidget->addWidget(m_menuScreen);        // index 0
-    m_stackedWidget->addWidget(m_cleanupScreen);     // index 1
-    m_stackedWidget->addWidget(m_sortingScreen);     // index 2
-    m_stackedWidget->addWidget(m_reportScreen);      // index 3
+    m_stackedWidget->addWidget(m_menuScreen);              // index 0
+    m_stackedWidget->addWidget(m_cleanupScreen);           // index 1
+    m_stackedWidget->addWidget(m_cleanUpAccountsScreen);   // index 4
+    m_stackedWidget->addWidget(m_sortingScreen);           // index 2
+    m_stackedWidget->addWidget(m_reportScreen);            // index 3
+
+    m_groupWatcher = nullptr;  // no grouping in progress at startup
 
     // === Connect screen navigation signals ===
 
@@ -110,6 +115,15 @@ MainWindow::MainWindow(QWidget* parent)
             this, &MainWindow::showSortingScreen);
     connect(m_cleanupScreen, &CleanupScreen::menuClicked,
             this, &MainWindow::showMenuScreen);
+
+    // CleanUpAccountsScreen
+    m_cleanUpAccountsScreen->setDatabaseManager(m_db);
+    connect(m_cleanUpAccountsScreen, &CleanUpAccountsScreen::menuClicked,
+            this, &MainWindow::showMenuScreen);
+
+    // MenuScreen -> CleanUpAccountsScreen
+    connect(m_menuScreen, &MenuScreen::cleanUpAccountsClicked,
+            this, &MainWindow::showCleanUpAccountsScreen);
 
     // SortingScreen -> ReportScreen when done
     connect(m_sortingScreen, &SortingScreen::allBatchesDone,
@@ -175,9 +189,12 @@ MainWindow::MainWindow(QWidget* parent)
     showMenuScreen();
 }
 
-MainWindow::~MainWindow() = default;
+MainWindow::~MainWindow() {
+    cancelGrouping();
+}
 
 void MainWindow::showMenuScreen() {
+    cancelGrouping();
     m_menuScreen->refreshConfigStatus();
     m_stackedWidget->setCurrentWidget(m_menuScreen);
     m_statusBar->showMessage("Ready");
@@ -187,7 +204,24 @@ void MainWindow::showCleanupScreen() {
     m_stackedWidget->setCurrentWidget(m_cleanupScreen);
 }
 
+void MainWindow::showCleanUpAccountsScreen() {
+    m_cleanUpAccountsScreen->refreshAccountsList();
+    m_stackedWidget->setCurrentWidget(m_cleanUpAccountsScreen);
+}
+
+void MainWindow::cancelGrouping() {
+    if (m_groupWatcher) {
+        m_groupWatcher->cancel();
+        m_groupWatcher->deleteLater();
+        m_groupWatcher = nullptr;
+        m_statusBar->showMessage("Grouping cancelled.");
+    }
+}
+
 void MainWindow::showSortingScreen() {
+    // Cancel any previous grouping that might still be running
+    cancelGrouping();
+
     // Run file grouping asynchronously to avoid blocking the UI
     m_statusBar->showMessage("Scanning and grouping files...");
     m_cleanupScreen->setDirectories(QStringList());  // clear old progress bars
@@ -195,12 +229,15 @@ void MainWindow::showSortingScreen() {
     m_cleanupScreen->enableContinue(false);
     showCleanupScreen();  // keep showing cleanup screen while grouping
 
-    QFutureWatcher<QList<FileGroup>>* groupWatcher =
-        new QFutureWatcher<QList<FileGroup>>(this);
+    m_groupWatcher = new QFutureWatcher<QList<FileGroup>>();
 
-    connect(groupWatcher, &QFutureWatcher<QList<FileGroup>>::finished,
-            this, [this, groupWatcher]() {
-                QList<FileGroup> groups = groupWatcher->result();
+    connect(m_groupWatcher, &QFutureWatcher<QList<FileGroup>>::finished,
+            this, [this]() {
+                if (!m_groupWatcher) return;  // was cancelled
+
+                QList<FileGroup> groups = m_groupWatcher->result();
+                m_groupWatcher->deleteLater();
+                m_groupWatcher = nullptr;
 
                 // Load output folders into the sort panel
                 m_sortingScreen->setOutputFolders(ConfigManager::instance()->outputFolders());
@@ -210,11 +247,9 @@ void MainWindow::showSortingScreen() {
 
                 m_stackedWidget->setCurrentWidget(m_sortingScreen);
                 m_statusBar->showMessage(QString("Sorting: %1 groups found").arg(groups.size()));
-
-                groupWatcher->deleteLater();
             });
 
-    groupWatcher->setFuture(QtConcurrent::run([this]() {
+    m_groupWatcher->setFuture(QtConcurrent::run([this]() {
         return m_engine->groupFiles();
     }));
 }
@@ -234,6 +269,9 @@ void MainWindow::showSettings() {
 }
 
 void MainWindow::startSortingPipeline() {
+    // Cancel any previous grouping in progress
+    cancelGrouping();
+
     // Validate config
     QString sourceDir = ConfigManager::instance()->sourceFolder();
     if (sourceDir.isEmpty() || !QDir(sourceDir).exists()) {

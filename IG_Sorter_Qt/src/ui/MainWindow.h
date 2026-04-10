@@ -5,13 +5,16 @@
 
 class QStackedWidget;
 class QStatusBar;
+template <typename T> class QFutureWatcher;
 class MenuScreen;
 class CleanupScreen;
+class CleanUpAccountsScreen;
 class SortingScreen;
 class ReportScreen;
 class SettingsDialog;
 class DatabaseManager;
 class SorterEngine;
+struct FileGroup;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -21,6 +24,7 @@ public:
 
     void showMenuScreen();
     void showCleanupScreen();
+    void showCleanUpAccountsScreen();
     void showSortingScreen();
     void showReportScreen();
     void showSettings();
@@ -34,6 +38,7 @@ signals:
 
 private:
     void startSortingPipeline();
+    void cancelGrouping();
 
     QStackedWidget* m_stackedWidget;
     QStatusBar*     m_statusBar;
@@ -43,6 +48,9 @@ private:
 
     MenuScreen*     m_menuScreen;
     CleanupScreen*  m_cleanupScreen;
+    CleanUpAccountsScreen* m_cleanUpAccountsScreen;
     SortingScreen*  m_sortingScreen;
     ReportScreen*   m_reportScreen;
+
+    QFutureWatcher<QList<FileGroup>>* m_groupWatcher;  // null when no grouping in progress
 };

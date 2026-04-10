@@ -87,3 +87,46 @@ QStatusBar {
     background-color: #2D2D2D;
     border-top: 1px solid #404040;
 }
+
+/* Menu screen buttons */
+#startButton {
+    background-color: #4CC2FF;
+    color: #000000;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 24px;
+    font-weight: bold;
+}
+
+#startButton:hover {
+    background-color: #6BD0FF;
+}
+
+#startButton:pressed {
+    background-color: #3AB0EE;
+}
+
+#settingsButton {
+    background-color: #5A5A5A;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 24px;
+    font-weight: bold;
+}
+
+#settingsButton:hover {
+    background-color: #6E6E6E;
+}
+
+#settingsButton:pressed {
+    background-color: #4A4A4A;
+}
+
+#menuTitle {
+    color: #FFFFFF;
+}
+
+#menuSubtitle {
+    color: #AAAAAA;
+}

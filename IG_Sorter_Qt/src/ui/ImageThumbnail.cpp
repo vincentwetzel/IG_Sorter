@@ -43,10 +43,11 @@ ImageThumbnail::ImageThumbnail(const QString& filePath, QWidget* parent)
         if (!image.isNull()) {
             LogManager::instance()->info(
                 QString("Decoded WebP via WIC: %1").arg(QFileInfo(filePath).fileName()));
+            m_pixmap = QPixmap::fromImage(image);
         }
     }
 
-    if (!image.isNull()) {
+    if (!image.isNull() && m_pixmap.isNull()) {
         m_pixmap = QPixmap::fromImage(image);
     }
 
