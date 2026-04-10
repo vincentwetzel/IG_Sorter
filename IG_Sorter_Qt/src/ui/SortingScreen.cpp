@@ -5,6 +5,7 @@
 #include "core/DatabaseManager.h"
 #include "core/SorterEngine.h"
 #include "utils/ConfigManager.h"
+#include <QLocale>
 #include <algorithm>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -740,7 +741,10 @@ void SortingScreen::handleAddUnknownAccount(const QString& account,
                                       : confirmedName;
             m_sortPanel->setAccountInfo(account, displayName, true, dialogType);
         } else {
-            return;  // User cancelled
+            // User cancelled — clear the text field so handleSortToFolder
+            // knows to abort sorting
+            m_sortPanel->clearNameInput();
+            return;
         }
     }
 }
@@ -890,10 +894,10 @@ void SortingScreen::updateHeader() {
 
     m_headerLabel->setText(
         QString("Batch %1 of %2  •  %3 / %4 sorted")
-            .arg(globalBatchIndex)
-            .arg(totalSubBatches)
-            .arg(m_filesSorted)
-            .arg(totalFiles));
+            .arg(QLocale().toString(globalBatchIndex))
+            .arg(QLocale().toString(totalSubBatches))
+            .arg(QLocale().toString(m_filesSorted))
+            .arg(QLocale().toString(totalFiles)));
 }
 
 void SortingScreen::recordNameUsed(const QString& name) {

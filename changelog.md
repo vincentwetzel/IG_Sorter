@@ -13,12 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Pixel dimensions display**: Each thumbnail in the sorting grid now shows its dimensions (e.g. `720x720`) above the filename hyperlink
 - **Sorting header progress**: Combined "sorted" and "remaining" into a single progress indicator (`86 / 2086 sorted`)
 - **Multithreaded file sorting**: `sortFiles()` now runs each file move in its own thread using `QtConcurrent` + `QFutureSynchronizer`, with mutex-protected name generation to prevent duplicate filenames
+- **Comma-formatted numbers**: Large file counts in the report screen and sorting header now display with thousand separators (e.g. `15,634`)
 
 ### Fixed
 - **AddPersonDialog no longer shown unnecessarily**: For Curator and IrlOnly accounts, the dialog is now skipped when the model name already exists in the database and there's no account to link
 - **Curator/IrlOnly model name separation**: The name field for Curator and IrlOnly accounts now correctly represents the MODEL in the photos (per-batch), not the account owner (photographer). After adding a curator, the text field clears so the user can enter the model's name
 - **Curator account type persistence**: `handleAddUnknownAccount` now uses `dialogType` (what the user selected in the Add Person dialog) for the group's account type, ensuring Curator sorting uses the text field for model name
 - **Cancel prevents sorting on Curator**: Clicking Cancel/No on the "Add Curator Account" confirmation now properly aborts sorting instead of proceeding
+- **Cancel aborts on unknown personal**: Clicking Cancel in the Add Person dialog for unknown accounts now clears the text field and aborts sorting instead of silently proceeding with the entered name
+- **Add Person button reset on Cancel**: Cancelling the Add Person dialog now resets the UI back to its original state so the button stays usable
 - **Clear Curator account confirmation**: When the model exists but the curator account doesn't, a clear message distinguishes "source account (photographer)" from "model (person in photos)"
 - **Button text preservation**: The "Add Person" button for Curator accounts no longer changes to "Sort", allowing users to add new models to the database during sorting
 - **Cache invalidation on DB changes**: Grouping cache is invalidated whenever accounts are added to the database, ensuring subsequent batches correctly recognize known accounts

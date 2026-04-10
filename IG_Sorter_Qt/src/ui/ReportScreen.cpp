@@ -4,6 +4,18 @@
 #include <QPushButton>
 #include <QTextEdit>
 
+// Format an integer with thousand separators (e.g. 15634 → 15,634)
+static QString formatNumber(int value) {
+    QString s = QString::number(value);
+    bool neg = (value < 0);
+    int start = neg ? 1 : 0;
+    int len = s.length() - start;
+    for (int i = len - 3; i > 0; i -= 3) {
+        s.insert(start + i, ',');
+    }
+    return s;
+}
+
 ReportScreen::ReportScreen(QWidget* parent)
     : QWidget(parent)
 {
@@ -57,9 +69,9 @@ void ReportScreen::setReport(const SortReportData& report) {
     text += "          SORTING COMPLETE\n";
     text += "═══════════════════════════════════════\n\n";
 
-    text += QString("Files sorted:        %1\n").arg(report.filesSorted);
-    text += QString("Files skipped:       %1\n").arg(report.filesSkipped);
-    text += QString("Errors:              %1\n\n").arg(report.errors);
+    text += QString("Files sorted:        %1\n").arg(formatNumber(report.filesSorted));
+    text += QString("Files skipped:       %1\n").arg(formatNumber(report.filesSkipped));
+    text += QString("Errors:              %1\n\n").arg(formatNumber(report.errors));
 
     if (!report.errorMessages.isEmpty()) {
         text += "── Errors ──\n";
@@ -73,7 +85,7 @@ void ReportScreen::setReport(const SortReportData& report) {
         text += "── Directory Summary ──\n";
         for (auto it = report.directoryFileCounts.begin();
              it != report.directoryFileCounts.end(); ++it) {
-            text += QString("%1:    %2 files\n").arg(it.key(), -10).arg(it.value());
+            text += QString("%1:    %2 files\n").arg(it.key(), -10).arg(formatNumber(it.value()));
         }
         text += "\n";
     }
@@ -90,7 +102,7 @@ void ReportScreen::setReport(const SortReportData& report) {
         text += "── Accounts by Type ──\n";
         for (auto it = report.filesByAccountType.begin();
              it != report.filesByAccountType.end(); ++it) {
-            text += QString("%1:   %2 files\n").arg(it.key(), -12).arg(it.value());
+            text += QString("%1:   %2 files\n").arg(it.key(), -12).arg(formatNumber(it.value()));
         }
         text += "\n";
     }
