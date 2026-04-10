@@ -94,31 +94,29 @@ SortPanel::SortPanel(QWidget* parent)
 
     actionRow->addStretch();
 
-    m_selectedCountLabel = new QLabel("0 files selected", this);
-    m_selectedCountLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    QFont countFont = m_selectedCountLabel->font();
-    countFont.setPointSize(10);
-    m_selectedCountLabel->setFont(countFont);
-    actionRow->addWidget(m_selectedCountLabel);
-
     m_mainLayout->addLayout(actionRow);
 
-    // IRL name display row (label + Open Instagram button)
-    // Only shown for unknown accounts — known accounts already show the name in the header
-    auto* irlRowLayout = new QHBoxLayout();
-    irlRowLayout->setSpacing(10);
+    // IRL name display row — label centered on full screen width.
+    // The Instagram button sits on the right but does NOT affect the label's centering.
+    auto* irlGridLayout = new QGridLayout();
+    irlGridLayout->setSpacing(10);
+    irlGridLayout->setColumnStretch(0, 1);
+    irlGridLayout->setColumnStretch(2, 1);
+
     m_irlNameLabel = new QLabel(this);
     m_irlNameLabel->setAlignment(Qt::AlignCenter);
     QFont irlFont = m_irlNameLabel->font();
     irlFont.setPointSize(14);
     irlFont.setBold(true);
     m_irlNameLabel->setFont(irlFont);
-    irlRowLayout->addWidget(m_irlNameLabel, 1);
+    // Label spans all 3 columns so it can be centered on the full width
+    irlGridLayout->addWidget(m_irlNameLabel, 0, 0, 1, 3);
 
+    // Instagram button in the rightmost cell — doesn't affect label centering
     m_openInstagramButton = new QPushButton("Open Instagram", this);
-    irlRowLayout->addWidget(m_openInstagramButton);
+    irlGridLayout->addWidget(m_openInstagramButton, 0, 2, Qt::AlignRight);
     m_openInstagramButton->hide();
-    m_mainLayout->addLayout(irlRowLayout);
+    m_mainLayout->addLayout(irlGridLayout);
 
     // Unknown account widget
     m_unknownAccountWidget = new QWidget(this);
@@ -209,13 +207,10 @@ void SortPanel::refreshCompleter() {
         return;
     }
 
-    QSet<QString> seenNames;  // deduplicate by IRL name
+    // Build entries per-account so every account handle is searchable
     QList<QPair<QString, QString>> pairs;
-
     for (const auto& entry : m_db->allEntries()) {
         if (entry.irlName.isEmpty()) continue;
-        if (seenNames.contains(entry.irlName.toLower())) continue;
-        seenNames.insert(entry.irlName.toLower());
 
         QString display;
         if (!entry.account.isEmpty()) {
@@ -226,6 +221,7 @@ void SortPanel::refreshCompleter() {
         pairs.append(qMakePair(display, entry.irlName));
     }
 
+    // Sort by display text (case-insensitive)
     std::sort(pairs.begin(), pairs.end(),
         [](const QPair<QString, QString>& a, const QPair<QString, QString>& b) {
             return a.first.compare(b.first, Qt::CaseInsensitive) < 0;
@@ -360,12 +356,11 @@ void SortPanel::clearSelections() {
     for (auto* btn : m_folderButtons) {
         btn->setChecked(false);
     }
-    m_selectedCountLabel->setText("0 files selected");
 }
 
 void SortPanel::updateSelectedCount(int count) {
-    m_selectedCountLabel->setText(QString("%1 files selected").arg(count));
-    // Note: Button text update is handled by SortingScreen via updateSelectAllButtonText()
+    Q_UNUSED(count);
+    // No-op — counter label removed
 }
 
 void SortPanel::updateSelectAllButtonText(bool allSelected) {

@@ -15,11 +15,11 @@ AddPersonDialog::AddPersonDialog(const QString& personName, const QString& accou
     setMinimumWidth(400);
     setupUI();
 
-    // Set suggested type
+    // Pre-select the suggested type from the dropdown
     switch (suggestedType) {
     case AccountType::Curator:  m_typeCombo->setCurrentIndex(1); break;
     case AccountType::IrlOnly:  m_typeCombo->setCurrentIndex(2); break;
-    default: break;
+    default:                    m_typeCombo->setCurrentIndex(0); break;
     }
 
     m_irlNameEdit->setText(personName);

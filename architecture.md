@@ -36,14 +36,20 @@ Both operate on the same data model but differ significantly in UX, extensibilit
 - **`MainWindow`**: Manages a `QStackedWidget` with screens: Menu → Cleanup → Sorting → Report.
 - **`MenuScreen`**: Startup screen with source folder link and start/settings buttons.
 - **`CleanupScreen`**: Progress bars per output directory, unknown name resolution with inline input fields.
-- **`SortingScreen`**: Main batch-sorting UI with preview grid, sort panel, sub-batch management, and progress header.
-- **`SortPanel`**: Dynamic output folder buttons, Select All/Deselect All toggle button, Skip Batch, Delete Selected, IRL name display, unknown account input with autocomplete, favorites quick-fill buttons.
+- **`SortingScreen`**: Main batch-sorting UI with preview grid, sort panel, sub-batch management, and progress header (`Batch X of Y • Z / N sorted`).
+- **`SortPanel`**: Dynamic output folder buttons, Select All/Deselect All toggle button, Skip Batch, Delete Selected, IRL name display, unknown account input with autocomplete (searchable by IRL name and account handle), favorites quick-fill buttons.
 - **`ImagePreviewGrid`**: Aspect-ratio-aware grid of selectable thumbnails with filename labels and pixel dimensions display.
 - **`ThumbnailWithLabel`**: Combines thumbnail, pixel dimensions label, and clickable filename hyperlink.
 - **`ImageThumbnail`**: Single selectable thumbnail widget with WebP WIC decoder fallback.
 - **`AddPersonDialog`**: Modal dialog prompting for IRL name and optional Instagram account when adding new people.
 - **`ReportScreen`**: Summary of files sorting results, errors, and directory file counts.
 - **`SettingsDialog`**: Configuration for source folder, output folders, database path, batch size, and theme.
+
+#### Core Engine
+- **SorterEngine Caching**: Groups files and caches results. Subsequent loads skip disk scans if source directory hasn't changed. Cache is invalidated when files are sorted or accounts are added to the database.
+- **Multithreaded Sorting**: `sortFiles()` runs each file move in its own thread using `QtConcurrent`. Name generation + file move is atomic under a mutex to prevent duplicate filenames.
+- **Targeted Cache Updates**: When a new account is added to the database, only matching groups are updated in-place rather than invalidating the entire cache.
+- **Curator/IrlOnly Name Separation**: For these account types, `irlName` represents the MODEL in the photos (per-batch), not the photographer. The text field is cleared after each batch to allow different model names.
 
 #### Utilities
 - **`ConfigManager`**: QSettings-based persistence for app configuration.

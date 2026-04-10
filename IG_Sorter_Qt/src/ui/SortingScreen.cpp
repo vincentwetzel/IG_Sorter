@@ -253,7 +253,7 @@ void SortingScreen::handleSortToFolder(int folderIndex) {
         // Proceed with sorting using the model name from text field — don't update group state
     } else if (group.accountType == AccountType::Curator) {
         // Curator accounts: the text field contains the MODEL's name,
-        // not the curator's. Check if the model exists and add if needed.
+        // not the curator's. The curator account (source of photos) is separate.
         bool nameExists = m_db && m_db->hasIrlName(irlName);
         bool accountNeedsLinking = !group.accountHandle.isEmpty() && m_db &&
                                    !m_db->hasAccount(group.accountHandle);
@@ -261,77 +261,113 @@ void SortingScreen::handleSortToFolder(int folderIndex) {
         if (nameExists && !accountNeedsLinking) {
             // Model exists and account is already linked — proceed directly
             // Don't persist model name to group — each batch can have a different model
-        } else {
-            // Show dialog to add the model (default to Personal type, not Curator)
-            AddPersonDialog dialog(irlName, group.accountHandle,
-                                   AccountType::Personal, this);
-            if (dialog.exec() == QDialog::Accepted) {
-                QString confirmedName = dialog.irlName();
-                QString account = dialog.accountHandle();
-                AccountType dialogType = dialog.accountType();
+        } else if (nameExists && accountNeedsLinking) {
+            // Model exists but curator account doesn't — show a clear confirmation
+            // to add the SOURCE ACCOUNT (photographer/curator), not the model
+            int ret = QMessageBox::question(this, "Add Curator Account",
+                QString("The model \"%1\" is in the database.\n\n"
+                        "Add the source account \"%2\" as a Curator (photographer)?")
+                    .arg(irlName, group.accountHandle),
+                QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
 
-                if (confirmedName.isEmpty() && account.isEmpty()) {
-                    QMessageBox::warning(this, "Empty Name",
-                        "Please enter a name or an account handle.");
-                    return;
-                }
-
-                // Case 1: Account given but no name — just add the account
-                if (confirmedName.isEmpty() && !account.isEmpty()) {
-                    if (!m_db->hasAccount(account)) {
-                        m_db->addEntry(account, QString(), AccountType::Personal);
-                        m_db->save();
-                        updateGroupsForNewAccount(account);
-                        m_sortPanel->refreshCompleter();
-                        QMessageBox::information(this, "Account Added",
-                            QString("Added \"%1\" (no name) to the database.")
-                                .arg(account));
-                    } else {
-                        QMessageBox::information(this, "Account Found",
-                            QString("\"%1\" is already in the database.").arg(account));
-                    }
-                    return;
-                }
-
-                // Case 2: Name given (account may or may not be given)
-                if (m_db->hasIrlName(confirmedName)) {
-                    // Name exists — check if this account is new
-                    if (!account.isEmpty() && !m_db->hasAccount(account)) {
-                        m_db->addEntry(account, confirmedName, dialogType);
-                        m_db->save();
-                        updateGroupsForNewAccount(account);
-                        m_sortPanel->refreshCompleter();
-                    }
-                    // Name exists — use it regardless of whether account was added
-                } else {
-                    // Brand new person
-                    if (!account.isEmpty()) {
-                        m_db->addEntry(account, confirmedName, dialogType);
-                    } else {
-                        m_db->addEntry(QString(), confirmedName, dialogType);
-                    }
-                    m_db->save();
-                    if (!account.isEmpty()) {
-                        updateGroupsForNewAccount(account);
-                    }
-                    m_sortPanel->refreshCompleter();
-                }
-
-                // Update group state so next batch pre-fills the name
-                // For Curator accounts, don't persist model name — each batch has a different model
-                FileGroup& g = m_groups[m_currentGroup];
-                if (group.accountType != AccountType::Curator) {
-                    g.irlName = confirmedName;
-                }
-                g.isKnown = true;
-                irlName = confirmedName;
-                // For Curator, don't pre-fill the name field — keep it clear for next model
-                if (group.accountType != AccountType::Curator) {
-                    m_sortPanel->setAccountInfo(group.accountHandle, confirmedName, true,
-                                                group.accountType);
-                }
+            if (ret == QMessageBox::Yes) {
+                m_db->addEntry(group.accountHandle, QString(), AccountType::Curator);
+                m_db->save();
+                updateGroupsForNewAccount(group.accountHandle);
+                m_sortPanel->refreshCompleter();
             } else {
-                return;  // User cancelled
+                return;  // User cancelled — don't sort
+            }
+        } else {
+            // Neither model nor account are ready — check specific cases
+            if (nameExists && accountNeedsLinking) {
+                // Model exists but curator account doesn't — simple confirmation
+                int ret = QMessageBox::question(this, "Add Curator Account",
+                    QString("The model \"%1\" is in the database.\n\n"
+                            "Add the source account \"%2\" as a Curator (photographer)?")
+                        .arg(irlName, group.accountHandle),
+                    QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
+
+                if (ret == QMessageBox::No) {
+                    return;  // User cancelled — don't sort
+                }
+                // User said Yes — add the curator account
+                m_db->addEntry(group.accountHandle, QString(), AccountType::Curator);
+                m_db->save();
+                updateGroupsForNewAccount(group.accountHandle);
+                m_sortPanel->refreshCompleter();
+            } else {
+                // Model doesn't exist — show full Add Person dialog
+                AddPersonDialog dialog(irlName, group.accountHandle,
+                                       AccountType::Personal, this);
+                if (dialog.exec() == QDialog::Accepted) {
+                    QString confirmedName = dialog.irlName();
+                    QString account = dialog.accountHandle();
+                    AccountType dialogType = dialog.accountType();
+
+                    if (confirmedName.isEmpty() && account.isEmpty()) {
+                        QMessageBox::warning(this, "Empty Name",
+                            "Please enter a name or an account handle.");
+                        return;
+                    }
+
+                    // Case 1: Account given but no name — just add the account
+                    if (confirmedName.isEmpty() && !account.isEmpty()) {
+                        if (!m_db->hasAccount(account)) {
+                            m_db->addEntry(account, QString(), AccountType::Personal);
+                            m_db->save();
+                            updateGroupsForNewAccount(account);
+                            m_sortPanel->refreshCompleter();
+                            QMessageBox::information(this, "Account Added",
+                                QString("Added \"%1\" (no name) to the database.")
+                                    .arg(account));
+                        } else {
+                            QMessageBox::information(this, "Account Found",
+                                QString("\"%1\" is already in the database.").arg(account));
+                        }
+                        return;
+                    }
+
+                    // Case 2: Name given (account may or may not be given)
+                    if (m_db->hasIrlName(confirmedName)) {
+                        // Name exists — check if this account is new
+                        if (!account.isEmpty() && !m_db->hasAccount(account)) {
+                            m_db->addEntry(account, confirmedName, dialogType);
+                            m_db->save();
+                            updateGroupsForNewAccount(account);
+                            m_sortPanel->refreshCompleter();
+                        }
+                        // Name exists — use it regardless of whether account was added
+                    } else {
+                        // Brand new person
+                        if (!account.isEmpty()) {
+                            m_db->addEntry(account, confirmedName, dialogType);
+                        } else {
+                            m_db->addEntry(QString(), confirmedName, dialogType);
+                        }
+                        m_db->save();
+                        if (!account.isEmpty()) {
+                            updateGroupsForNewAccount(account);
+                        }
+                        m_sortPanel->refreshCompleter();
+                    }
+
+                    // Update group state so next batch pre-fills the name
+                    // For Curator accounts, don't persist model name — each batch has a different model
+                    FileGroup& g = m_groups[m_currentGroup];
+                    if (group.accountType != AccountType::Curator) {
+                        g.irlName = confirmedName;
+                    }
+                    g.isKnown = true;
+                    irlName = confirmedName;
+                    // For Curator, don't pre-fill the name field — keep it clear for next model
+                    if (group.accountType != AccountType::Curator) {
+                        m_sortPanel->setAccountInfo(group.accountHandle, confirmedName, true,
+                                                    group.accountType);
+                    }
+                } else {
+                    return;  // User cancelled — don't sort
+                }
             }
         }
     }
@@ -560,15 +596,23 @@ void SortingScreen::handleAddUnknownAccount(const QString& account,
     if (nameExists && !accountNeedsLinking) {
         // Name exists and account is already linked (or no account to link) — proceed directly
         QString confirmedName = irlName;
-        
+
         // Update the group so sorting can proceed
         FileGroup& g = m_groups[m_currentGroup];
-        g.irlName = confirmedName;
         g.isKnown = true;
         g.accountType = type;
 
-        // Update UI to reflect the now-known account
-        m_sortPanel->setAccountInfo(account, confirmedName, true, type);
+        // For Curator and IrlOnly, do NOT set irlName — the account is the photographer,
+        // but the name field is for the MODEL in the photos (changes per batch)
+        if (type != AccountType::Curator && type != AccountType::IrlOnly) {
+            g.irlName = confirmedName;
+        }
+
+        // Update UI — for Curator/IrlOnly, pass empty name so text field stays clear
+        QString displayName = (type == AccountType::Curator || type == AccountType::IrlOnly)
+                                  ? QString()
+                                  : confirmedName;
+        m_sortPanel->setAccountInfo(account, displayName, true, type);
     } else {
         // Show the dialog so the user can link this account to the person
         // (even if the IRL name already exists — people can have multiple accounts)
@@ -679,21 +723,22 @@ void SortingScreen::handleAddUnknownAccount(const QString& account,
             // Update the group so sorting can proceed
             FileGroup& g = m_groups[m_currentGroup];
             g.isKnown = true;
-            g.accountType = type;
+            // Use dialogType (what user selected in dialog), not the original type
+            g.accountType = dialogType;
 
             // For Curator accounts, do NOT set irlName — the account is the photographer,
             // but the name field is for the MODEL in the photos (changes per batch).
             // For IrlOnly, same logic — name field is for the model.
-            if (type != AccountType::Curator && type != AccountType::IrlOnly) {
+            if (dialogType != AccountType::Curator && dialogType != AccountType::IrlOnly) {
                 g.irlName = confirmedName;
             }
 
             // Update UI — for Curator and IrlOnly, pass empty name so text field is
             // cleared for model input (the confirmed name was the photographer, not the model)
-            QString displayName = (type == AccountType::Curator || type == AccountType::IrlOnly)
+            QString displayName = (dialogType == AccountType::Curator || dialogType == AccountType::IrlOnly)
                                       ? QString()
                                       : confirmedName;
-            m_sortPanel->setAccountInfo(account, displayName, true, type);
+            m_sortPanel->setAccountInfo(account, displayName, true, dialogType);
         } else {
             return;  // User cancelled
         }
@@ -746,39 +791,58 @@ void SortingScreen::handleCuratorResolvedName(const QString& irlNameParam) {
                                    !m_db->hasAccount(group.accountHandle);
 
         if (!nameExists || accountNeedsLinking) {
-            // Model doesn't exist or account needs linking — show dialog
-            AddPersonDialog dialog(irlName, group.accountHandle, AccountType::Personal, this);
-            if (dialog.exec() == QDialog::Accepted) {
-                QString confirmedName = dialog.irlName();
-                QString account = dialog.accountHandle();
-                AccountType dialogType = dialog.accountType();
+            // Model doesn't exist or account needs linking
+            if (nameExists && accountNeedsLinking) {
+                // Model exists but curator account doesn't — show clear confirmation
+                int ret = QMessageBox::question(this, "Add Curator Account",
+                    QString("The model \"%1\" is in the database.\n\n"
+                            "Add the source account \"%2\" as a Curator (photographer)?")
+                        .arg(irlName, group.accountHandle),
+                    QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
 
-                if (!confirmedName.isEmpty()) {
-                    if (m_db->hasIrlName(confirmedName)) {
-                        // Model exists — just link account if needed
-                        if (!account.isEmpty() && !m_db->hasAccount(account)) {
-                            m_db->addEntry(account, confirmedName, dialogType);
+                if (ret == QMessageBox::No) {
+                    return;  // User cancelled — don't sort
+                }
+                // User said Yes — add the curator account
+                m_db->addEntry(group.accountHandle, QString(), AccountType::Curator);
+                m_db->save();
+                updateGroupsForNewAccount(group.accountHandle);
+                m_sortPanel->refreshCompleter();
+            } else {
+                // Model doesn't exist — show full Add Person dialog
+                AddPersonDialog dialog(irlName, group.accountHandle, AccountType::Personal, this);
+                if (dialog.exec() == QDialog::Accepted) {
+                    QString confirmedName = dialog.irlName();
+                    QString account = dialog.accountHandle();
+                    AccountType dialogType = dialog.accountType();
+
+                    if (!confirmedName.isEmpty()) {
+                        if (m_db->hasIrlName(confirmedName)) {
+                            // Model exists — just link account if needed
+                            if (!account.isEmpty() && !m_db->hasAccount(account)) {
+                                m_db->addEntry(account, confirmedName, dialogType);
+                                m_db->save();
+                                updateGroupsForNewAccount(account);
+                                m_sortPanel->refreshCompleter();
+                            }
+                        } else {
+                            // New model — add to DB
+                            if (!account.isEmpty()) {
+                                m_db->addEntry(account, confirmedName, dialogType);
+                            } else {
+                                m_db->addEntry(QString(), confirmedName, dialogType);
+                            }
                             m_db->save();
-                            updateGroupsForNewAccount(account);
+                            if (!account.isEmpty()) {
+                                updateGroupsForNewAccount(account);
+                            }
                             m_sortPanel->refreshCompleter();
                         }
-                    } else {
-                        // New model — add to DB
-                        if (!account.isEmpty()) {
-                            m_db->addEntry(account, confirmedName, dialogType);
-                        } else {
-                            m_db->addEntry(QString(), confirmedName, dialogType);
-                        }
-                        m_db->save();
-                        if (!account.isEmpty()) {
-                            updateGroupsForNewAccount(account);
-                        }
-                        m_sortPanel->refreshCompleter();
+                        irlName = confirmedName;
                     }
-                    irlName = confirmedName;
+                } else {
+                    return;  // User cancelled — don't sort
                 }
-            } else {
-                return;  // User cancelled
             }
         }
 
@@ -814,11 +878,6 @@ void SortingScreen::updateHeader() {
     const FileGroup& group = m_groups[m_currentGroup];
     int filesRemainingInCurrentBatch = group.filePaths.size() - (m_currentSubBatch * batchSize);
 
-    QString accountDisplay = group.accountHandle;
-    if (group.accountType == AccountType::Curator) {
-        accountDisplay += " [C]";
-    }
-
     // Count total remaining files (current group + all subsequent groups)
     int totalRemaining = 0;
     for (int i = m_currentGroup + 1; i < m_groups.size(); ++i) {
@@ -830,10 +889,9 @@ void SortingScreen::updateHeader() {
     int totalFiles = m_filesSorted + totalRemaining;
 
     m_headerLabel->setText(
-        QString("Batch %1 of %2  •  %3  •  %4 / %5 sorted")
+        QString("Batch %1 of %2  •  %3 / %4 sorted")
             .arg(globalBatchIndex)
             .arg(totalSubBatches)
-            .arg(accountDisplay)
             .arg(m_filesSorted)
             .arg(totalFiles));
 }

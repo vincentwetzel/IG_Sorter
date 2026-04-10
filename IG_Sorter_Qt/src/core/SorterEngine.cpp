@@ -5,9 +5,10 @@
 #include <QDir>
 #include <QDirIterator>
 #include <QFileInfo>
-#include <QtConcurrent>
+#include <QFuture>
 #include <QFutureSynchronizer>
 #include <QMutex>
+#include <QtConcurrent>
 
 SorterEngine::SorterEngine(DatabaseManager* db, QObject* parent)
     : QObject(parent), m_db(db), m_cacheDirModTime(0), m_cacheValid(false) {}
@@ -116,41 +117,60 @@ SortResult SorterEngine::sortFiles(const QStringList& filePaths,
     Q_UNUSED(accountHandle);
     Q_UNUSED(accountType);
 
-    SortResult result;
-    SortOperation op;
-    op.outputFolderName = outputFolderName;
-    op.irlName = irlName;
-
     LogManager::instance()->info(
         QString("Sorting %1 files to %2 as '%3'")
             .arg(filePaths.size()).arg(outputDir).arg(irlName));
 
+    // Shared state protected by mutex
+    QMutex mutex;
+    SortResult result;
+    QList<SortOperation::FileMove> fileMoves;
+
+    // Run each file move in its own thread.
+    // The name generation + file move is done under the mutex to avoid
+    // two threads generating the same filename.
+    QFutureSynchronizer<void> sync;
     for (const auto& filePath : filePaths) {
-        QFileInfo fi(filePath);
-        QString ext = fi.suffix();
-        if (!ext.isEmpty()) {
-            ext = "." + ext;
-        }
+        sync.addFuture(QtConcurrent::run([&]() {
+            QString ext;
+            {
+                QFileInfo fi(filePath);
+                ext = fi.suffix();
+                if (!ext.isEmpty()) {
+                    ext = "." + ext;
+                }
+            }
 
-        QString baseName = irlName;
-        QString nextName = FileUtils::nextAvailableName(outputDir, baseName, ext);
-        QString destFileName = nextName + ext;
+            // Name generation + file move must be atomic to avoid duplicate names
+            QMutexLocker locker(&mutex);
+            QString baseName = irlName;
+            QString nextName = FileUtils::nextAvailableName(outputDir, baseName, ext);
+            QString destFileName = nextName + ext;
 
-        QString errorMsg;
-        QString destPath = FileUtils::safeMove(filePath, outputDir, destFileName, &errorMsg);
+            QString errorMsg;
+            QString destPath = FileUtils::safeMove(filePath, outputDir, destFileName, &errorMsg);
 
-        if (!destPath.isEmpty()) {
-            result.filesSorted++;
-            SortOperation::FileMove move;
-            move.sourcePath = filePath;
-            move.destPath = destPath;
-            op.fileMoves.append(move);
-        } else {
-            result.errors++;
-            result.errorMessages.append(
-                QString("Failed to move %1: %2").arg(fi.fileName(), errorMsg));
-        }
+            if (!destPath.isEmpty()) {
+                result.filesSorted++;
+                SortOperation::FileMove move;
+                move.sourcePath = filePath;
+                move.destPath = destPath;
+                fileMoves.append(move);
+            } else {
+                result.errors++;
+                result.errorMessages.append(
+                    QString("Failed to move %1: %2").arg(QFileInfo(filePath).fileName(), errorMsg));
+            }
+        }));
     }
+
+    sync.waitForFinished();
+
+    // Build sort operation for undo
+    SortOperation op;
+    op.outputFolderName = outputFolderName;
+    op.irlName = irlName;
+    op.fileMoves = fileMoves;
 
     // Push to undo stack if any files were sorted
     if (op.fileMoves.size() > 0) {

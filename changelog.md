@@ -12,19 +12,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Select All / Deselect All button**: Positioned between Skip Batch and Delete Selected in the sort panel. Automatically toggles between "Select All" and "Deselect All" based on current selection state
 - **Pixel dimensions display**: Each thumbnail in the sorting grid now shows its dimensions (e.g. `720x720`) above the filename hyperlink
 - **Sorting header progress**: Combined "sorted" and "remaining" into a single progress indicator (`86 / 2086 sorted`)
+- **Multithreaded file sorting**: `sortFiles()` now runs each file move in its own thread using `QtConcurrent` + `QFutureSynchronizer`, with mutex-protected name generation to prevent duplicate filenames
 
 ### Fixed
 - **AddPersonDialog no longer shown unnecessarily**: For Curator and IrlOnly accounts, the dialog is now skipped when the model name already exists in the database and there's no account to link
 - **Curator/IrlOnly model name separation**: The name field for Curator and IrlOnly accounts now correctly represents the MODEL in the photos (per-batch), not the account owner (photographer). After adding a curator, the text field clears so the user can enter the model's name
+- **Curator account type persistence**: `handleAddUnknownAccount` now uses `dialogType` (what the user selected in the Add Person dialog) for the group's account type, ensuring Curator sorting uses the text field for model name
+- **Cancel prevents sorting on Curator**: Clicking Cancel/No on the "Add Curator Account" confirmation now properly aborts sorting instead of proceeding
+- **Clear Curator account confirmation**: When the model exists but the curator account doesn't, a clear message distinguishes "source account (photographer)" from "model (person in photos)"
 - **Button text preservation**: The "Add Person" button for Curator accounts no longer changes to "Sort", allowing users to add new models to the database during sorting
 - **Cache invalidation on DB changes**: Grouping cache is invalidated whenever accounts are added to the database, ensuring subsequent batches correctly recognize known accounts
 - **Select All button toggle**: Fixed Deselect All not working — button now correctly reads current selection state and emits the appropriate signal
 - **Equal button widths**: Skip Batch, Select All, and Delete Selected buttons now have fixed equal widths for proper centering
+- **Account name label centering**: Curator/IrlOnly account label is now centered on the full screen width using QGridLayout, independent of the Open Instagram button
+- **Removed files selected counter**: The "X files selected" label has been removed from the sorting UI
 
 ### Changed
 - **Targeted cache updates**: Instead of invalidating the entire grouping cache when a new account is added, only the affected groups are updated in-place (O(n) where n = number of groups)
 - **Curator/IrlOnly name handling**: For these account types, `irlName` is no longer persisted to the group state or UI. The text field is cleared after each batch to allow entering a different model name
 - **FileGrouper optimization**: For Curator and IrlOnly accounts found in the database, `irlName` is no longer set since the account is the photographer, not the model
+- **Completer per-account entries**: The name completer now shows one entry per account instead of deduplicating by IRL name, enabling search by account handle (including substrings)
+- **Sorting header layout**: Removed account name from the header; now shows just `Batch X of Y • Z / N sorted`
+- **AddPersonDialog defaults**: Account type dropdown now always defaults to Personal based on the sort panel's dropdown selection
 
 ### Added — Qt C++ Desktop App (`IG_Sorter_Qt/`)
 - Modern Qt 6 C++ GUI replacing the CLI `Instagram_Sorter.py`

@@ -79,7 +79,6 @@ private:
     QVBoxLayout*   m_mainLayout;
     QHBoxLayout*   m_folderButtonsLayout;
     QLabel*        m_irlNameLabel;
-    QLabel*        m_selectedCountLabel;
 
     // Unknown account UI (shown/hidden as needed)
     QWidget*       m_unknownAccountWidget;
