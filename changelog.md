@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Find Duplicate Files screen**: New menu option launching a dedicated duplicate finder with image preview grid, visual similarity comparison, and one-click delete with undo
+  - Groups files by byte size AND extracted person name (e.g. "Michael Doherty" vs "Michael Zanderigo" are never paired)
+  - Visual similarity check: 16x16 grayscale thumbnail comparison, 85% similarity threshold required
+  - Files sorted by trailing number in filename (lowest number shown first, auto-selected as the keeper)
+  - Side-by-side green/red labels show which files will be kept vs deleted
+  - Files sent to Recycle Bin (not permanently deleted)
+  - Undo button restores files from temp staging back to original locations
+  - Async background scan with progress indicator
+  - Human-readable file sizes (KB, MB, GB)
 - **Grouping cache**: SorterEngine caches grouping results and skips redundant disk scans when source directory hasn't changed, dramatically improving sorting screen load time on subsequent runs
 - **Select All / Deselect All button**: Positioned between Skip Batch and Delete Selected in the sort panel. Automatically toggles between "Select All" and "Deselect All" based on current selection state
 - **Pixel dimensions display**: Each thumbnail in the sorting grid now shows its dimensions (e.g. `720x720`) above the filename hyperlink

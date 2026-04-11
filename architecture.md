@@ -33,8 +33,8 @@ Both operate on the same data model but differ significantly in UX, extensibilit
 - **`FileUtils`**: Safe copy-then-rename file move with no-overwrite guarantees.
 
 #### UI Layer
-- **`MainWindow`**: Manages a `QStackedWidget` with screens: Menu → Cleanup → Sorting → Report.
-- **`MenuScreen`**: Startup screen with source folder link and start/settings buttons.
+- **`MainWindow`**: Manages a `QStackedWidget` with screens: Menu → Cleanup → Sorting → Report. Also hosts `DuplicateFinderScreen` (navigated from Menu).
+- **`MenuScreen`**: Startup screen with source folder link and Start Sorting, Clean Up Accounts, Find Duplicates, and Settings buttons.
 - **`CleanupScreen`**: Progress bars per output directory, unknown name resolution with inline input fields.
 - **`SortingScreen`**: Main batch-sorting UI with preview grid, sort panel, sub-batch management, and progress header (`Batch X of Y • Z / N sorted`). Numbers formatted with locale-aware thousand separators.
 - **`SortPanel`**: Dynamic output folder buttons, Select All/Deselect All toggle button, Skip Batch, Delete Selected, IRL name display, unknown account input with autocomplete (searchable by IRL name and account handle), favorites quick-fill buttons.
@@ -43,6 +43,7 @@ Both operate on the same data model but differ significantly in UX, extensibilit
 - **`ImageThumbnail`**: Single selectable thumbnail widget with WebP WIC decoder fallback.
 - **`AddPersonDialog`**: Modal dialog prompting for IRL name and optional Instagram account when adding new people.
 - **`ReportScreen`**: Summary of files sorting results, errors, and directory file counts. All file counts formatted with thousand separators.
+- **`DuplicateFinderScreen`**: Dedicated screen for finding and removing duplicate files across output directories. Shows images in a preview grid, auto-selects the lowest-numbered file as the default keeper, displays green/red labels for keep/delete status. Files are moved to Recycle Bin with undo support via temp staging directory.
 - **`SettingsDialog`**: Configuration for source folder, output folders, database path, batch size, and theme.
 
 #### Core Engine
@@ -50,6 +51,7 @@ Both operate on the same data model but differ significantly in UX, extensibilit
 - **Multithreaded Sorting**: `sortFiles()` runs each file move in its own thread using `QtConcurrent`. Name generation + file move is atomic under a mutex to prevent duplicate filenames.
 - **Targeted Cache Updates**: When a new account is added to the database, only matching groups are updated in-place rather than invalidating the entire cache.
 - **Curator/IrlOnly Name Separation**: For these account types, `irlName` represents the MODEL in the photos (per-batch), not the photographer. The text field is cleared after each batch to allow different model names.
+- **DuplicateFinder**: Detects duplicate files by grouping on byte size AND extracted person name (trailing number stripped from filename). Verifies visual similarity via 16x16 grayscale thumbnail comparison (85% threshold). Sorts each group by trailing filename number so the lowest number is the default keeper.
 
 #### Utilities
 - **`ConfigManager`**: QSettings-based persistence for app configuration.

@@ -16,6 +16,7 @@ signals:
     void startSortingClicked();
     void settingsClicked();
     void cleanUpAccountsClicked();
+    void findDuplicatesClicked();
 
 private:
     QLabel*     m_titleLabel;
@@ -23,6 +24,7 @@ private:
     QLabel*     m_configStatusLabel;
     QPushButton* m_startButton;
     QPushButton* m_cleanUpAccountsButton;
+    QPushButton* m_findDuplicatesButton;
     QPushButton* m_settingsButton;
 
 private slots:

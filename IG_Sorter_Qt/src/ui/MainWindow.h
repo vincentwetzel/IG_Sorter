@@ -11,6 +11,7 @@ class CleanupScreen;
 class CleanUpAccountsScreen;
 class SortingScreen;
 class ReportScreen;
+class DuplicateFinderScreen;
 class SettingsDialog;
 class DatabaseManager;
 class SorterEngine;
@@ -27,6 +28,7 @@ public:
     void showCleanUpAccountsScreen();
     void showSortingScreen();
     void showReportScreen();
+    void showDuplicateFinderScreen();
     void showSettings();
 
     DatabaseManager* database() const { return m_db; }
@@ -51,6 +53,7 @@ private:
     CleanUpAccountsScreen* m_cleanUpAccountsScreen;
     SortingScreen*  m_sortingScreen;
     ReportScreen*   m_reportScreen;
+    DuplicateFinderScreen* m_duplicateFinderScreen;
 
     QFutureWatcher<QList<FileGroup>>* m_groupWatcher;  // null when no grouping in progress
 };

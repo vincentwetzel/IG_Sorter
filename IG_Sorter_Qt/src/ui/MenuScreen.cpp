@@ -75,6 +75,13 @@ MenuScreen::MenuScreen(QWidget* parent)
     m_cleanUpAccountsButton->setObjectName("cleanUpAccountsButton");
     buttonLayout->addWidget(m_cleanUpAccountsButton);
 
+    m_findDuplicatesButton = new QPushButton("Find Duplicates", this);
+    m_findDuplicatesButton->setMinimumSize(320, 70);
+    m_findDuplicatesButton->setMaximumSize(400, 80);
+    m_findDuplicatesButton->setFont(btnFont);
+    m_findDuplicatesButton->setObjectName("findDuplicatesButton");
+    buttonLayout->addWidget(m_findDuplicatesButton);
+
     m_settingsButton = new QPushButton("Settings", this);
     m_settingsButton->setMinimumSize(320, 70);
     m_settingsButton->setMaximumSize(400, 80);
@@ -92,6 +99,8 @@ MenuScreen::MenuScreen(QWidget* parent)
             this, &MenuScreen::startSortingClicked);
     connect(m_cleanUpAccountsButton, &QPushButton::clicked,
             this, &MenuScreen::cleanUpAccountsClicked);
+    connect(m_findDuplicatesButton, &QPushButton::clicked,
+            this, &MenuScreen::findDuplicatesClicked);
     connect(m_settingsButton, &QPushButton::clicked,
             this, &MenuScreen::settingsClicked);
     connect(m_configStatusLabel, &QLabel::linkActivated,

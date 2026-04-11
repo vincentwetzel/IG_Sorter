@@ -213,3 +213,11 @@ bool ImagePreviewGrid::allSelected() const {
     }
     return true;
 }
+
+void ImagePreviewGrid::selectSingle(int index) {
+    deselectAll();
+    if (index >= 0 && index < m_items.size()) {
+        m_items[index]->thumbnail()->setSelected(true);
+        emit selectionChanged(1);
+    }
+}

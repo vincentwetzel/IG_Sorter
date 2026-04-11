@@ -21,6 +21,7 @@ set(SOURCES
     src/core/DirectoryCleanup.cpp
     src/core/SorterEngine.cpp
     src/core/ExtensionFixer.cpp
+    src/core/DuplicateFinder.cpp
     src/utils/ConfigManager.cpp
     src/utils/FileUtils.cpp
     src/utils/ThemeManager.cpp
@@ -32,6 +33,7 @@ set(SOURCES
     src/ui/CleanUpAccountsScreen.cpp
     src/ui/SortingScreen.cpp
     src/ui/ReportScreen.cpp
+    src/ui/DuplicateFinderScreen.cpp
     src/ui/SettingsDialog.cpp
     src/ui/ImagePreviewGrid.cpp
     src/ui/ImageThumbnail.cpp
@@ -48,6 +50,7 @@ set(HEADERS
     src/core/DirectoryCleanup.h
     src/core/SorterEngine.h
     src/core/ExtensionFixer.h
+    src/core/DuplicateFinder.h
     src/core/Types.h
     src/utils/ConfigManager.h
     src/utils/FileUtils.h
@@ -60,6 +63,7 @@ set(HEADERS
     src/ui/CleanUpAccountsScreen.h
     src/ui/SortingScreen.h
     src/ui/ReportScreen.h
+    src/ui/DuplicateFinderScreen.h
     src/ui/SettingsDialog.h
     src/ui/ImagePreviewGrid.h
     src/ui/ImageThumbnail.h

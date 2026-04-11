@@ -4,6 +4,7 @@
 #include "ui/CleanUpAccountsScreen.h"
 #include "ui/SortingScreen.h"
 #include "ui/ReportScreen.h"
+#include "ui/DuplicateFinderScreen.h"
 #include "ui/SettingsDialog.h"
 #include "core/SorterEngine.h"
 #include "core/DatabaseManager.h"
@@ -93,12 +94,14 @@ MainWindow::MainWindow(QWidget* parent)
     m_cleanUpAccountsScreen = new CleanUpAccountsScreen(this);
     m_sortingScreen = new SortingScreen(this);
     m_reportScreen = new ReportScreen(this);
+    m_duplicateFinderScreen = new DuplicateFinderScreen(this);
 
     m_stackedWidget->addWidget(m_menuScreen);              // index 0
     m_stackedWidget->addWidget(m_cleanupScreen);           // index 1
     m_stackedWidget->addWidget(m_cleanUpAccountsScreen);   // index 4
     m_stackedWidget->addWidget(m_sortingScreen);           // index 2
     m_stackedWidget->addWidget(m_reportScreen);            // index 3
+    m_stackedWidget->addWidget(m_duplicateFinderScreen);   // index 5
 
     m_groupWatcher = nullptr;  // no grouping in progress at startup
 
@@ -109,6 +112,8 @@ MainWindow::MainWindow(QWidget* parent)
             this, &MainWindow::showSettings);
     connect(m_menuScreen, &MenuScreen::startSortingClicked,
             this, &MainWindow::startSortingPipeline);
+    connect(m_menuScreen, &MenuScreen::findDuplicatesClicked,
+            this, &MainWindow::showDuplicateFinderScreen);
 
     // CleanupScreen -> SortingScreen
     connect(m_cleanupScreen, &CleanupScreen::continueClicked,
@@ -181,6 +186,10 @@ MainWindow::MainWindow(QWidget* parent)
             this, &MainWindow::showMenuScreen);
     connect(m_reportScreen, &ReportScreen::settingsClicked,
             this, &MainWindow::showSettings);
+
+    // DuplicateFinderScreen -> MenuScreen
+    connect(m_duplicateFinderScreen, &DuplicateFinderScreen::menuClicked,
+            this, &MainWindow::showMenuScreen);
 
     // Apply theme
     ThemeManager::instance()->applyTheme();
@@ -257,6 +266,24 @@ void MainWindow::showSortingScreen() {
 void MainWindow::showReportScreen() {
     m_stackedWidget->setCurrentWidget(m_reportScreen);
     m_statusBar->showMessage("Sorting complete.");
+}
+
+void MainWindow::showDuplicateFinderScreen() {
+    // Collect output directory paths
+    QStringList outputDirPaths;
+    for (const auto& folder : ConfigManager::instance()->outputFolders()) {
+        outputDirPaths.append(folder.path);
+    }
+
+    if (outputDirPaths.isEmpty()) {
+        QMessageBox::warning(this, "No Directories",
+            "No output folders configured. Please open Settings and add at least one output folder.");
+        return;
+    }
+
+    m_duplicateFinderScreen->setDirectories(outputDirPaths);
+    m_stackedWidget->setCurrentWidget(m_duplicateFinderScreen);
+    m_statusBar->showMessage("Ready to scan for duplicates.");
 }
 
 void MainWindow::showSettings() {

@@ -27,6 +27,9 @@ public:
     void deselectAll();
     bool allSelected() const;
 
+    // Select a single thumbnail by index (deselects all others)
+    void selectSingle(int index);
+
 signals:
     void selectionChanged(int selectedCount);
     void deleteKeyPressed();
