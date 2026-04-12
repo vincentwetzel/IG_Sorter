@@ -22,7 +22,7 @@ QPushButton:pressed {
     background-color: #505050;
 }
 
-QPushButton:checked, QPushButton:focus {
+QPushButton:checked {
     background-color: #4CC2FF;
     border-color: #4CC2FF;
     color: #000000;
@@ -129,4 +129,67 @@ QStatusBar {
 
 #menuSubtitle {
     color: #AAAAAA;
+}
+
+/* Semantic button variants */
+#deleteButton {
+    color: #FF6B6B;
+}
+
+#deleteButton:hover {
+    background-color: #3D1F1F;
+}
+
+#deleteButton:pressed {
+    background-color: #4D2F2F;
+}
+
+#markKeepButton {
+    color: #6BCB77;
+}
+
+#markKeepButton:hover {
+    background-color: #1F3D23;
+}
+
+#markDeleteButton {
+    color: #FF6B6B;
+}
+
+#markDeleteButton:hover {
+    background-color: #3D1F1F;
+}
+
+#deleteNextButton {
+    color: #6BCB77;
+}
+
+#deleteNextButton:hover {
+    background-color: #1F3D23;
+}
+
+#curatorSortButton {
+    color: #6BCB77;
+}
+
+#curatorSortButton:hover {
+    background-color: #1F3D23;
+}
+
+#addPersonButton {
+}
+
+#scanButton {
+    background-color: #4CC2FF;
+    color: #000000;
+    border: none;
+    border-radius: 6px;
+}
+
+#scanButton:hover {
+    background-color: #6BD0FF;
+}
+
+#scanButton:pressed {
+    background-color: #3AB0EE;
 }

@@ -4,6 +4,7 @@
 #include <QString>
 #include <QVector>
 #include <QList>
+#include <QLineEdit>
 #include "core/DatabaseManager.h"
 
 class QCompleter;
@@ -15,6 +16,31 @@ class QLabel;
 class QPushButton;
 class QLineEdit;
 class QComboBox;
+
+// QLineEdit that grabs Tab key and emits ghostAccepted signal
+// Used for IDE-style inline completion
+class GhostLineEdit : public QLineEdit {
+    Q_OBJECT
+public:
+    explicit GhostLineEdit(QWidget* parent = nullptr);
+
+    void setGhostText(const QString& ghost);
+    void clearGhost();
+    QString ghostText() const { return m_ghost; }
+    void updateGhostGeometry();  // public so resizeEvent can call it
+
+signals:
+    void tabPressed();
+    void escapePressed();
+
+protected:
+    bool event(QEvent* event) override;
+    void paintEvent(QPaintEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
+
+    QString m_ghost;
+    QRect   m_ghostRect;
+};
 
 struct OutputFolderConfig;
 
@@ -75,6 +101,9 @@ private:
     void rebuildFolderButtons();
     void rebuildFavoriteButtons();
     void trimOverflowFavoriteButtons();
+    void updateGhostText();
+
+    bool m_suppressGhost;  // prevent ghost from re-showing during Tab commit
 
     QVBoxLayout*   m_mainLayout;
     QHBoxLayout*   m_folderButtonsLayout;
@@ -82,7 +111,7 @@ private:
 
     // Unknown account UI (shown/hidden as needed)
     QWidget*       m_unknownAccountWidget;
-    QLineEdit*     m_unknownNameEdit;
+    GhostLineEdit* m_unknownNameEdit;
     QComboBox*     m_unknownTypeCombo;
     QPushButton*   m_unknownAddButton;
     QPushButton*   m_openInstagramButton;

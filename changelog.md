@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **IDE-style Tab autocomplete** for "Who is in these photos" field: gray ghost text appears after typed text, Tab commits the full name with proper capitalization and closes the completer dropdown
+- **App-wide button styling via QSS themes**: removed all inline `setStyleSheet()` calls, added semantic button variants (#deleteButton, #curatorSortButton, #scanButton, etc.) to both light and dark themes
 - **Find Duplicate Files screen**: New menu option launching a dedicated duplicate finder with image preview grid, visual similarity comparison, and one-click delete with undo
   - Groups files by byte size AND extracted person name (e.g. "Michael Doherty" vs "Michael Zanderigo" are never paired)
   - Visual similarity check: 16x16 grayscale thumbnail comparison, 85% similarity threshold required

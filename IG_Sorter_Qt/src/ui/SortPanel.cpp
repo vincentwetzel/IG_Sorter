@@ -11,6 +11,10 @@
 #include <QCompleter>
 #include <QStringListModel>
 #include <QKeyEvent>
+#include <QPainter>
+#include <QStyle>
+#include <QStyleOptionFrame>
+#include <QAbstractItemView>
 #include <QDesktopServices>
 #include <QUrl>
 #include <QTimer>
@@ -36,9 +40,89 @@ public:
     }
 };
 
+// ─── GhostLineEdit ──────────────────────────────────────────────────────────
+
+GhostLineEdit::GhostLineEdit(QWidget* parent)
+    : QLineEdit(parent)
+{
+}
+
+void GhostLineEdit::setGhostText(const QString& ghost) {
+    if (m_ghost == ghost) return;
+    m_ghost = ghost;
+    updateGhostGeometry();
+    update();
+}
+
+void GhostLineEdit::clearGhost() {
+    if (!m_ghost.isEmpty()) {
+        m_ghost.clear();
+        m_ghostRect = QRect();
+        update();
+    }
+}
+
+void GhostLineEdit::updateGhostGeometry() {
+    if (m_ghost.isEmpty() || text().isEmpty()) {
+        m_ghostRect = QRect();
+        return;
+    }
+
+    QFontMetrics fm(font());
+    int textWidth = fm.horizontalAdvance(text());
+
+    QStyleOptionFrame opt;
+    initStyleOption(&opt);
+    QRect textRect = style()->subElementRect(QStyle::SE_LineEditContents, &opt, this);
+
+    int x = textRect.x() + textWidth + 4;
+    int y = textRect.y();
+    int h = textRect.height();
+
+    m_ghostRect = QRect(x, y, fm.horizontalAdvance(m_ghost) + 4, h);
+}
+
+bool GhostLineEdit::event(QEvent* event) {
+    if (event->type() == QEvent::KeyPress) {
+        auto* keyEvent = static_cast<QKeyEvent*>(event);
+        if (keyEvent->key() == Qt::Key_Tab || keyEvent->key() == Qt::Key_Backtab) {
+            emit tabPressed();
+            return true;
+        }
+        if (keyEvent->key() == Qt::Key_Escape) {
+            emit escapePressed();
+            return true;
+        }
+    }
+    return QLineEdit::event(event);
+}
+
+void GhostLineEdit::paintEvent(QPaintEvent* event) {
+    QLineEdit::paintEvent(event);
+
+    if (m_ghost.isEmpty() || text().isEmpty() || m_ghostRect.isEmpty()) return;
+
+    QPainter painter(this);
+    painter.setRenderHint(QPainter::Antialiasing);
+
+    QFont ghostFont = font();
+    ghostFont.setItalic(true);
+    painter.setFont(ghostFont);
+    painter.setPen(QColor("#999999"));
+
+    painter.drawText(m_ghostRect, Qt::AlignVCenter | Qt::AlignLeft, m_ghost);
+}
+
+void GhostLineEdit::resizeEvent(QResizeEvent* event) {
+    QLineEdit::resizeEvent(event);
+    if (!m_ghost.isEmpty()) {
+        updateGhostGeometry();
+    }
+}
+
 SortPanel::SortPanel(QWidget* parent)
     : QWidget(parent), m_isKnown(true), m_accountType(AccountType::Personal),
-      m_db(nullptr), m_allSelected(false)
+      m_db(nullptr), m_allSelected(false), m_suppressGhost(false)
 {
     m_mainLayout = new QVBoxLayout(this);
     m_mainLayout->setSpacing(8);
@@ -86,7 +170,7 @@ SortPanel::SortPanel(QWidget* parent)
     m_deleteButton->setMinimumHeight(36);
     m_deleteButton->setFixedWidth(140);
     m_deleteButton->setFont(btnFont);
-    m_deleteButton->setStyleSheet("QPushButton { color: #d32f2f; }");
+    m_deleteButton->setObjectName("deleteButton");
     actionRow->addWidget(m_deleteButton);
 
     connect(m_deleteButton, &QPushButton::clicked,
@@ -126,13 +210,47 @@ SortPanel::SortPanel(QWidget* parent)
     m_unknownAccountLabel = new QLabel("Unknown account:", m_unknownAccountWidget);
     unknownLayout->addWidget(m_unknownAccountLabel);
 
-    m_unknownNameEdit = new QLineEdit(m_unknownAccountWidget);
+    m_unknownNameEdit = new GhostLineEdit(m_unknownAccountWidget);
     m_unknownNameEdit->setPlaceholderText("Enter IRL name...");
     m_unknownNameEdit->setCompleter(m_completer);
-    unknownLayout->addWidget(m_unknownNameEdit);
+    unknownLayout->addWidget(m_unknownNameEdit, 1);
 
-    // Install event filter for Tab completion
-    m_unknownNameEdit->installEventFilter(this);
+    // Update ghost text on any text change
+    connect(m_unknownNameEdit, &QLineEdit::textChanged,
+            this, &SortPanel::updateGhostText);
+
+    // Tab accepted — commit ghost completion
+    connect(m_unknownNameEdit, &GhostLineEdit::tabPressed, this, [this]() {
+        QString ghost = m_unknownNameEdit->ghostText();
+        if (!ghost.isEmpty()) {
+            m_suppressGhost = true;
+            QString currentText = m_unknownNameEdit->text().toLower();
+            QString fullName;
+            for (const auto& entry : m_allCompleterEntries) {
+                int parenIdx = entry.indexOf('(');
+                QString irlName = (parenIdx > 0)
+                    ? entry.left(parenIdx).trimmed()
+                    : entry;
+                if (irlName.toLower() == currentText + ghost.toLower()) {
+                    fullName = irlName;
+                    break;
+                }
+            }
+            if (fullName.isEmpty()) {
+                fullName = currentText + ghost;
+            }
+            m_unknownNameEdit->setText(fullName);
+            m_unknownNameEdit->setCursorPosition(fullName.length());
+            m_unknownNameEdit->clearGhost();
+            m_unknownNameEdit->completer()->popup()->hide();  // close dropdown
+            m_suppressGhost = false;
+        }
+    });
+
+    // Escape — dismiss ghost suggestion
+    connect(m_unknownNameEdit, &GhostLineEdit::escapePressed, this, [this]() {
+        m_unknownNameEdit->clearGhost();
+    });
 
     m_unknownTypeCombo = new QComboBox(m_unknownAccountWidget);
     m_unknownTypeCombo->addItem("Personal");
@@ -238,31 +356,6 @@ void SortPanel::refreshCompleter() {
 }
 
 bool SortPanel::eventFilter(QObject* watched, QEvent* event) {
-    if (watched == m_unknownNameEdit && event->type() == QEvent::KeyPress) {
-        auto* keyEvent = static_cast<QKeyEvent*>(event);
-        if (keyEvent->key() == Qt::Key_Tab) {
-            QString currentText = m_unknownNameEdit->text().trimmed();
-            if (currentText.isEmpty()) {
-                return true;  // Nothing to complete
-            }
-
-            // Find the first matching entry (case-insensitive substring)
-            QString lowerText = currentText.toLower();
-            for (const auto& entry : m_allCompleterEntries) {
-                if (entry.toLower().contains(lowerText)) {
-                    // Strip the "(account)" suffix — just insert the IRL name
-                    int parenIdx = entry.indexOf('(');
-                    QString irlName = (parenIdx > 0)
-                        ? entry.left(parenIdx).trimmed()
-                        : entry;
-                    m_unknownNameEdit->setText(irlName);
-                    m_unknownNameEdit->setCursorPosition(irlName.length());
-                    return true;
-                }
-            }
-            return true;
-        }
-    }
     return QWidget::eventFilter(watched, event);
 }
 
@@ -271,6 +364,10 @@ void SortPanel::resizeEvent(QResizeEvent* event) {
     // Re-evaluate favorite buttons visibility on resize
     if (!m_favoriteButtons.isEmpty()) {
         trimOverflowFavoriteButtons();
+    }
+    // Reposition ghost if visible
+    if (!m_unknownNameEdit->ghostText().isEmpty()) {
+        m_unknownNameEdit->updateGhostGeometry();
     }
 }
 
@@ -308,6 +405,7 @@ void SortPanel::setAccountInfo(const QString& accountHandle,
         if (isKnown && !irlName.isEmpty()) {
             // Account is known and name provided — use it for this batch
             m_unknownNameEdit->setText(irlName);
+            m_unknownNameEdit->clearGhost();
         } else {
             // Unknown account or no name — clear field for user input
             m_unknownNameEdit->clear();
@@ -324,6 +422,7 @@ void SortPanel::setAccountInfo(const QString& accountHandle,
         m_unknownAccountLabel->setText("Who is in these photos?");
         m_unknownNameEdit->setPlaceholderText("Enter IRL name...");
         m_unknownNameEdit->setText(irlName);
+        m_unknownNameEdit->clearGhost();
         m_unknownTypeCombo->hide();
         m_unknownAddButton->setText("Sort");
         m_unknownAddButton->setObjectName("curatorSortButton");
@@ -345,11 +444,13 @@ void SortPanel::setAccountInfo(const QString& accountHandle,
 // Call this to explicitly clear the name input (used when loading new batches)
 void SortPanel::clearNameInput() {
     m_unknownNameEdit->clear();
+    m_unknownNameEdit->clearGhost();
 }
 
 // Set the name input field to a specific value
 void SortPanel::setNameInput(const QString& name) {
     m_unknownNameEdit->setText(name);
+    m_unknownNameEdit->clearGhost();
 }
 
 void SortPanel::clearSelections() {
@@ -383,6 +484,32 @@ QString SortPanel::getCuratorResolvedName() const {
 
 int SortPanel::getUnknownAccountTypeIndex() const {
     return m_unknownTypeCombo->currentIndex();
+}
+
+void SortPanel::updateGhostText() {
+    if (m_suppressGhost) return;
+
+    QString currentText = m_unknownNameEdit->text();
+    if (currentText.isEmpty()) {
+        m_unknownNameEdit->clearGhost();
+        return;
+    }
+
+    QString lowerText = currentText.toLower();
+    for (const auto& entry : m_allCompleterEntries) {
+        int parenIdx = entry.indexOf('(');
+        QString irlName = (parenIdx > 0)
+            ? entry.left(parenIdx).trimmed()
+            : entry;
+
+        if (irlName.toLower().startsWith(lowerText) && irlName.length() > currentText.length()) {
+            QString ghost = irlName.mid(currentText.length());
+            m_unknownNameEdit->setGhostText(ghost);
+            return;
+        }
+    }
+
+    m_unknownNameEdit->clearGhost();
 }
 
 void SortPanel::rebuildFolderButtons() {
@@ -446,11 +573,11 @@ void SortPanel::setQuickFillNames(const QStringList& names) {
         btn->setFont(font);
         btn->setMinimumHeight(32);
         btn->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Preferred);
-        btn->setStyleSheet("QPushButton { padding: 4px 8px; }");
         btn->setCheckable(true);
         connect(btn, &QPushButton::clicked, this, [this, name, btn]() {
             m_unknownNameEdit->setText(name);
             m_unknownNameEdit->setCursorPosition(name.length());
+            m_unknownNameEdit->clearGhost();
         });
         m_favoriteButtons.append(btn);
         m_favoritesLayout->addWidget(btn);

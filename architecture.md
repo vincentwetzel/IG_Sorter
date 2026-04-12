@@ -37,7 +37,7 @@ Both operate on the same data model but differ significantly in UX, extensibilit
 - **`MenuScreen`**: Startup screen with source folder link and Start Sorting, Clean Up Accounts, Find Duplicates, and Settings buttons.
 - **`CleanupScreen`**: Progress bars per output directory, unknown name resolution with inline input fields.
 - **`SortingScreen`**: Main batch-sorting UI with preview grid, sort panel, sub-batch management, and progress header (`Batch X of Y • Z / N sorted`). Numbers formatted with locale-aware thousand separators.
-- **`SortPanel`**: Dynamic output folder buttons, Select All/Deselect All toggle button, Skip Batch, Delete Selected, IRL name display, unknown account input with autocomplete (searchable by IRL name and account handle), favorites quick-fill buttons.
+- **`SortPanel`**: Dynamic output folder buttons, Select All/Deselect All toggle button, Skip Batch, Delete Selected, IRL name display, unknown account input with autocomplete (searchable by IRL name and account handle), favorites quick-fill buttons. Tab key autocompletes names with IDE-style ghost text (faint gray italic suffix), commits with proper capitalization.
 - **`ImagePreviewGrid`**: Aspect-ratio-aware grid of selectable thumbnails with filename labels and pixel dimensions display.
 - **`ThumbnailWithLabel`**: Combines thumbnail, pixel dimensions label, and clickable filename hyperlink.
 - **`ImageThumbnail`**: Single selectable thumbnail widget with WebP WIC decoder fallback.
@@ -55,7 +55,7 @@ Both operate on the same data model but differ significantly in UX, extensibilit
 
 #### Utilities
 - **`ConfigManager`**: QSettings-based persistence for app configuration.
-- **`ThemeManager`**: Light/Dark/System theme support via QSS stylesheets.
+- **`ThemeManager`**: Light/Dark/System theme support via QSS stylesheets. All button styling is defined in `light.qss`/`dark.qss` using object name selectors (#deleteButton, #curatorSortButton, etc.) — no inline `setStyleSheet()` in C++ code.
 - **`LogManager`**: Centralized logging with file rotation.
 - **`WebpDecoder`**: Windows WIC-based WebP decoder for thumbnail preview when Qt's built-in support is unavailable.
 
