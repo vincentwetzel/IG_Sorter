@@ -387,9 +387,12 @@ void SortPanel::setAccountInfo(const QString& accountHandle,
         m_unknownAccountWidget->show();
         m_unknownAccountLabel->setText("Who is in these photos?");
         m_unknownNameEdit->setPlaceholderText("Enter IRL name for output files...");
-        // Clear the text field — for Curator accounts, the name field is for the MODEL,
-        // not the curator. Keep button as "Add Person" so user can add new models to DB.
-        m_unknownNameEdit->clear();
+        if (isKnown && !irlName.isEmpty()) {
+            m_unknownNameEdit->setText(irlName);
+            m_unknownNameEdit->clearGhost();
+        } else {
+            m_unknownNameEdit->clear();
+        }
         m_unknownTypeCombo->hide();
         m_openInstagramButton->show();
         m_unknownAddButton->setText("Add Person");

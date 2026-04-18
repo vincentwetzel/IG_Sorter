@@ -402,25 +402,18 @@ void SortingScreen::handleSortToFolder(int folderIndex) {
             expectedSuccess--;
         }
 
-        // For IrlOnly sources (Twitter, TikTok, etc.) and unknown personal accounts,
-        // reset group state after sorting so the next sub-batch asks for a new name
-        if (group.accountType == AccountType::IrlOnly) {
-            // Track name usage for leaderboard
-            m_nameCounts[irlName]++;
+        // Save the resolved name to the current group so it persists for any remaining
+        // sub-batches of THIS specific post/group.
+        if (group.accountType == AccountType::Curator ||
+            group.accountType == AccountType::IrlOnly ||
+            group.accountHandle == "Unknown") {
 
-            m_groups[m_currentGroup].irlName.clear();
-            m_sortPanel->setAccountInfo(group.accountHandle, QString(), true, group.accountType);
-            m_sortPanel->clearNameInput();
-            updateFavoriteButtons();
-        } else if (group.accountHandle == "Unknown") {
-            // Unknown personal account resolved just for this sub-batch — reset for next
             m_nameCounts[irlName]++;
+            m_groups[m_currentGroup].irlName = irlName;
+            m_groups[m_currentGroup].isKnown = true;
 
-            m_groups[m_currentGroup].irlName.clear();
-            m_groups[m_currentGroup].isKnown = false;
-            m_groups[m_currentGroup].accountType = AccountType::Personal;
-            m_sortPanel->setAccountInfo(group.accountHandle, QString(), false, AccountType::Personal);
-            m_sortPanel->clearNameInput();
+            // Update UI immediately in case the sub-batch isn't finished yet
+            m_sortPanel->setAccountInfo(group.accountHandle, irlName, true, group.accountType);
             updateFavoriteButtons();
         }
 
@@ -603,15 +596,17 @@ void SortingScreen::handleAddUnknownAccount(const QString& account,
         g.isKnown = true;
         g.accountType = type;
 
-        // For Curator and IrlOnly, do NOT set irlName — the account is the photographer,
-        // but the name field is for the MODEL in the photos (changes per batch)
+        // For Curator and IrlOnly, do NOT overwrite irlName with the photographer's name.
+        // Instead, preserve whatever model name was already typed in the text field.
         if (type != AccountType::Curator && type != AccountType::IrlOnly) {
             g.irlName = confirmedName;
+        } else {
+            g.irlName = m_sortPanel->getCuratorResolvedName();
         }
 
-        // Update UI — for Curator/IrlOnly, pass empty name so text field stays clear
+        // Update UI — for Curator/IrlOnly, pass the preserved model name so text field isn't cleared
         QString displayName = (type == AccountType::Curator || type == AccountType::IrlOnly)
-                                  ? QString()
+                                  ? g.irlName
                                   : confirmedName;
         m_sortPanel->setAccountInfo(account, displayName, true, type);
     } else {
@@ -643,10 +638,14 @@ void SortingScreen::handleAddUnknownAccount(const QString& account,
 
                         // Update group so sorting can proceed
                         FileGroup& g = m_groups[m_currentGroup];
-                        g.irlName = QString();
+                        if (dialogType == AccountType::Curator || dialogType == AccountType::IrlOnly) {
+                            g.irlName = m_sortPanel->getCuratorResolvedName();
+                        } else {
+                            g.irlName = QString();
+                        }
                         g.isKnown = true;
                         g.accountType = dialogType;
-                        m_sortPanel->setAccountInfo(account, QString(), true, dialogType);
+                        m_sortPanel->setAccountInfo(account, g.irlName, true, dialogType);
                     } else {
                         QMessageBox::warning(this, "Duplicate Account",
                             QString("The account \"%1\" already exists in the database.")
@@ -727,17 +726,17 @@ void SortingScreen::handleAddUnknownAccount(const QString& account,
             // Use dialogType (what user selected in dialog), not the original type
             g.accountType = dialogType;
 
-            // For Curator accounts, do NOT set irlName — the account is the photographer,
-            // but the name field is for the MODEL in the photos (changes per batch).
-            // For IrlOnly, same logic — name field is for the model.
+            // For Curator accounts, do NOT overwrite irlName with the photographer's name.
+            // Instead, preserve whatever model name was already typed in the text field.
             if (dialogType != AccountType::Curator && dialogType != AccountType::IrlOnly) {
                 g.irlName = confirmedName;
+            } else {
+                g.irlName = m_sortPanel->getCuratorResolvedName();
             }
 
-            // Update UI — for Curator and IrlOnly, pass empty name so text field is
-            // cleared for model input (the confirmed name was the photographer, not the model)
+            // Update UI — for Curator and IrlOnly, pass the preserved model name so text field isn't cleared
             QString displayName = (dialogType == AccountType::Curator || dialogType == AccountType::IrlOnly)
-                                      ? QString()
+                                      ? g.irlName
                                       : confirmedName;
             m_sortPanel->setAccountInfo(account, displayName, true, dialogType);
         } else {
@@ -850,9 +849,9 @@ void SortingScreen::handleCuratorResolvedName(const QString& irlNameParam) {
             }
         }
 
-        // Don't persist model name to group — each batch can have a different model
-        // Clear the name input for next batch
-        m_sortPanel->clearNameInput();
+        // Persist model name to group so it is remembered for current and subsequent sub-batches
+        m_groups[m_currentGroup].irlName = irlName;
+        m_sortPanel->setAccountInfo(group.accountHandle, irlName, true, group.accountType);
     }
 }
 
@@ -951,10 +950,11 @@ void SortingScreen::updateGroupsForNewAccount(const QString& accountHandle) {
             m_groups[i].isKnown = true;
             m_groups[i].accountType = type;
 
-            // For Curator and IrlOnly, do NOT set irlName — the account is the photographer,
-            // but the name field is for the model (changes per batch)
+            // For Curator and IrlOnly, preserve the existing model name for the active group.
             if (type != AccountType::Curator && type != AccountType::IrlOnly) {
                 m_groups[i].irlName = irlName;
+            } else if (i == m_currentGroup) {
+                m_groups[i].irlName = m_sortPanel->getCuratorResolvedName();
             }
 
             if (i == m_currentGroup) {
@@ -965,9 +965,9 @@ void SortingScreen::updateGroupsForNewAccount(const QString& accountHandle) {
 
     // Update the current group's UI if it was affected
     if (currentGroupUpdated) {
-        // For Curator and IrlOnly, pass empty name so text field is cleared for model input
+        // For Curator and IrlOnly, pass current model name so text field isn't cleared
         QString displayName = (type == AccountType::Curator || type == AccountType::IrlOnly)
-                                  ? QString()
+                                  ? m_groups[m_currentGroup].irlName
                                   : irlName;
         m_sortPanel->setAccountInfo(accountHandle, displayName, true, type);
     }

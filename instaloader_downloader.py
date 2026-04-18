@@ -78,6 +78,35 @@ def save_downloaded_shortcode_db(filepath: str, shortcode: str) -> None:
     conn.close()
 
 
+def prune_stale_shortcodes_db(filepath: str, current_shortcodes: Set[str]) -> int:
+    """Remove shortcodes from the database that are no longer in the current saved posts list.
+
+    This keeps the database in sync with what's actually on Instagram.
+    If a user unsaves a post from IG, its shortcode will be removed from the DB
+    so that re-saving it later won't cause it to be incorrectly skipped.
+
+    Args:
+        filepath: Path to the SQLite database file.
+        current_shortcodes: Set of shortcodes that are currently in the IG saved posts list.
+
+    Returns:
+        Number of stale entries removed.
+    """
+    conn = connect(filepath)
+    cursor = conn.execute("SELECT shortcode FROM downloaded_posts")
+    all_tracked = {row[0] for row in cursor.fetchall()}
+    stale = all_tracked - current_shortcodes
+    if stale:
+        placeholders = ",".join("?" for _ in stale)
+        conn.execute(
+            f"DELETE FROM downloaded_posts WHERE shortcode NOT IN ({placeholders})",
+            tuple(stale)
+        )
+        conn.commit()
+    conn.close()
+    return len(stale)
+
+
 def check_instaloader_version() -> None:
     """Check if instaloader is up to date. Auto-upgrade if outdated.
 
@@ -332,17 +361,33 @@ try:
 
     log(f"Found {total_posts_available} saved posts to download.")
     log(f"Already downloaded: {len(downloaded_shortcodes)}")
-    remaining_total: int = total_posts_available - len(downloaded_shortcodes)
+
+    # Count how many posts are actually remaining (not in database)
+    # We need to iterate since posts is a generator
+    posts_list = list(posts)
+    posts_shortcodes: Set[str] = {p.shortcode for p in posts_list}
+
+    # Remove stale entries from DB (posts that are no longer in IG saved list)
+    pruned_count: int = prune_stale_shortcodes_db(shortcodes_file, posts_shortcodes)
+    if pruned_count > 0:
+        log(f"Pruned {pruned_count} stale shortcode(s) (unsaved from IG)")
+        # Update in-memory set to match DB
+        downloaded_shortcodes = downloaded_shortcodes & posts_shortcodes
+
+    posts_to_download_count = sum(
+        1 for p in posts_list if p.shortcode not in downloaded_shortcodes
+    )
+    remaining_total: int = posts_to_download_count
     log(f"Remaining to download: {remaining_total}")
     log(f"Session limit: {max_posts if max_posts else 'unlimited'}")
     log("-" * 60)
 
-    posts_to_download: int = 0
-    for i, post in enumerate(posts):
+    posts_to_download_display: int = 0
+    for i, post in enumerate(posts_list):
         if post.shortcode in downloaded_shortcodes:
             skip_count += 1
             continue
-        posts_to_download += 1
+        posts_to_download_display += 1
         if max_posts is not None and download_count >= max_posts:
             log(
                 f"Reached maximum post limit ({max_posts}). "
@@ -351,7 +396,7 @@ try:
             break
         try:
             post_timestamp: str = timestamp()
-            log(f"[{post_timestamp}] Downloading post {posts_to_download}/{remaining_total}...")
+            log(f"[{post_timestamp}] Downloading post {posts_to_download_display}/{remaining_total}...")
             L.download_post(post, target=ig_name)
             download_count += 1
             downloaded_shortcodes.add(post.shortcode)
@@ -406,6 +451,7 @@ log(f"  Total duration:       {minutes}m {seconds}s")
 log(f"  Posts found:          {total_posts_available if 'total_posts_available' in locals() else 'unknown'}")
 log(f"  Posts skipped:        {skip_count} (already downloaded)")
 log(f"  Posts downloaded:     {download_count}")
+log(f"  Stale entries pruned: {pruned_count if 'pruned_count' in locals() else 0}")
 log(f"  Errors encountered:   {download_errors}")
 if error_details:
     log("  Error details:")
