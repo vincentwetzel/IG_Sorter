@@ -51,7 +51,7 @@ IG_Sorter_Qt/
 │   ├── styles/                              // QSS theme files (light / dark)
 │   └── resources.qrc
 └── data/
-    └── ig_people.json                       // Account-to-IRL-name database (user-provided)
+    └── ig_people.json                       // Optional local user-provided database
 ```
 
 ---
@@ -725,7 +725,7 @@ Uses `QSettings` with INI format.
 ```ini
 [General]
 SourceFolder=I:/Google Drive/.../Pictures/NEED TO SORT
-DatabaseFile=I:/coding_workspaces/Python/IG_Sorter/ig_people.json
+DatabaseFile=I:/path/to/ig_people.json
 BatchSize=5
 Theme=System
 

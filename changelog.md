@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- Removed the Instaloader downloader script, download history, downloader settings, downloaded media, and private-data submodule from this project. Downloader tooling and private data now live outside this repository.
+
 ### Added
 - **IDE-style Tab autocomplete** for "Who is in these photos" field: gray ghost text appears after typed text, Tab commits the full name with proper capitalization and closes the completer dropdown
 - **App-wide button styling via QSS themes**: removed all inline `setStyleSheet()` calls, added semantic button variants (#deleteButton, #curatorSortButton, #scanButton, etc.) to both light and dark themes
@@ -88,7 +91,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - `Instagram_Sorter.py`: Automated sorting, renaming, and error-handling script for newly downloaded images.
 - `Find_Duplicate_Files.py`: Utility script to scan SFW, MSFW, and NSFW directories for duplicate files based on file size.
-- `instaloader_downloader.py`: Firefox cookie extraction tool to resolve Instaloader login and authorization issues.
 - `ig_people.json` integration for mapping Instagram handles to real names.
 - `photographers.txt` integration to skip/handle specific known photographer accounts.
 - `run_IG_Sorter.bat`: Windows batch file for easy execution of the main sorting script.

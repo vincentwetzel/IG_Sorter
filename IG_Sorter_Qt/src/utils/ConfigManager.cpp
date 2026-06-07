@@ -79,8 +79,8 @@ QString ConfigManager::databaseFile() const {
             return path;
         }
     }
-    // Default to private-data submodule
-    return "private-data/ig_people.json";
+    // Private databases are configured explicitly by the user.
+    return "";
 }
 
 void ConfigManager::setDatabaseFile(const QString& path) {

@@ -41,21 +41,13 @@ MainWindow::MainWindow(QWidget* parent)
     // If not found, also check the parent directory (covers dev builds where
     // the binary lives in build/ but data is in the repo root).
     QFileInfo dbInfo(dbPath);
-    if (!dbInfo.isAbsolute()) {
+    if (!dbPath.isEmpty() && !dbInfo.isAbsolute()) {
         QString appDir = QCoreApplication::applicationDirPath();
         QString candidate = QDir(appDir).filePath(dbPath);
         if (!QFile::exists(candidate)) {
             // Try one level up (repo root during development)
             candidate = QDir(appDir).filePath("../" + dbPath);
-            if (!QFile::exists(candidate)) {
-                // Last resort: fall back to submodule default
-                candidate = QDir(appDir).filePath("../private-data/ig_people.json");
-                if (QFile::exists(candidate)) {
-                    LogManager::instance()->warning(
-                        QString("Configured DB not found, using default: %1").arg(candidate));
-                    dbPath = candidate;
-                }
-            } else {
+            if (QFile::exists(candidate)) {
                 dbPath = QFileInfo(candidate).absoluteFilePath();
             }
         } else {
@@ -329,19 +321,18 @@ void MainWindow::startSortingPipeline() {
     // Reload database if path changed — resolve relative path the same way
     QString dbPath = ConfigManager::instance()->databaseFile();
     QFileInfo dbReloadInfo(dbPath);
-    if (!dbReloadInfo.isAbsolute()) {
+    if (!dbPath.isEmpty() && !dbReloadInfo.isAbsolute()) {
         QString appDir = QCoreApplication::applicationDirPath();
         QString candidate = QDir(appDir).filePath(dbPath);
         if (!QFile::exists(candidate)) {
             candidate = QDir(appDir).filePath("../" + dbPath);
             if (!QFile::exists(candidate)) {
-                candidate = QDir(appDir).filePath("../private-data/ig_people.json");
-                if (QFile::exists(candidate)) {
-                    dbPath = candidate;
-                }
+                candidate.clear();
             }
         }
-        dbPath = QFileInfo(candidate).absoluteFilePath();
+        if (!candidate.isEmpty()) {
+            dbPath = QFileInfo(candidate).absoluteFilePath();
+        }
     }
     int entriesBefore = m_db->allEntries().size();
     if (!dbPath.isEmpty() && QFile::exists(dbPath)) {
