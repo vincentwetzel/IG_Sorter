@@ -97,10 +97,9 @@ def prune_stale_shortcodes_db(filepath: str, current_shortcodes: Set[str]) -> in
     all_tracked = {row[0] for row in cursor.fetchall()}
     stale = all_tracked - current_shortcodes
     if stale:
-        placeholders = ",".join("?" for _ in stale)
-        conn.execute(
-            f"DELETE FROM downloaded_posts WHERE shortcode NOT IN ({placeholders})",
-            tuple(stale)
+        conn.executemany(
+            "DELETE FROM downloaded_posts WHERE shortcode = ?",
+            [(s,) for s in stale]
         )
         conn.commit()
     conn.close()
@@ -337,8 +336,6 @@ log(f"Sleeping for {initial_delay} seconds before starting downloads...")
 for remaining in range(initial_delay, 0, -10):
     log(f"  Starting downloads in {remaining} seconds...")
     time.sleep(min(10, remaining))
-if initial_delay % 10 != 0:
-    time.sleep(initial_delay % 10)
 
 # Load download history for resuming across sessions
 shortcodes_file: str = "download_history.db"
@@ -355,16 +352,14 @@ try:
     profile: instaloader.Profile = instaloader.Profile.from_username(
         L.context, ig_name
     )
-    posts = profile.get_saved_posts()
-    total_posts_available: int = sum(1 for _ in posts)
-    posts = profile.get_saved_posts()  # Re-fetch since generator is exhausted
+    posts_list = list(profile.get_saved_posts())
+    total_posts_available: int = len(posts_list)
 
     log(f"Found {total_posts_available} saved posts to download.")
     log(f"Already downloaded: {len(downloaded_shortcodes)}")
 
     # Count how many posts are actually remaining (not in database)
     # We need to iterate since posts is a generator
-    posts_list = list(posts)
     posts_shortcodes: Set[str] = {p.shortcode for p in posts_list}
 
     # Remove stale entries from DB (posts that are no longer in IG saved list)
@@ -395,8 +390,7 @@ try:
             )
             break
         try:
-            post_timestamp: str = timestamp()
-            log(f"[{post_timestamp}] Downloading post {posts_to_download_display}/{remaining_total}...")
+            log(f"Downloading post {posts_to_download_display}/{remaining_total}...")
             L.download_post(post, target=ig_name)
             download_count += 1
             downloaded_shortcodes.add(post.shortcode)
@@ -409,22 +403,20 @@ try:
             )
             max_display: str = str(max_posts) if max_posts else "∞"
             log(
-                f"[{post_timestamp}] ✓ Downloaded {expected_filename} "
+                f"✓ Downloaded {expected_filename} "
                 f"({download_count}/{max_display} this session)"
             )
         except Exception as post_error:
             download_errors += 1
             error_msg: str = f"Post {i + 1}: {post_error}"
             error_details.append(error_msg)
-            log(f"[{timestamp()}] ✗ Error downloading post {i + 1}: {post_error}")
+            log(f"✗ Error downloading post {i + 1}: {post_error}")
 
         delay: int = random.randint(60, 120)
         log(f"  Next download in {delay} seconds...")
         for remaining in range(delay, 0, -10):
             log(f"    {remaining}s remaining...")
             time.sleep(min(10, remaining))
-        if delay % 10 != 0:
-            time.sleep(delay % 10)
             
 except instaloader.exceptions.ConnectionException as e:
     download_errors += 1
