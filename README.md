@@ -15,7 +15,7 @@ IG_Sorter is a Qt C++ desktop application for managing, sorting, and renaming im
 - **Automatic extension fixing** for mismatched image extensions
 - **Sub-batch name reset** so mixed-people batches can be sorted correctly
 - **Add Person dialog** for adding unknown accounts and people during sorting
-- **Duplicate Finder screen** with visual similarity comparison and Recycle Bin deletion
+- **Duplicate Finder screen** with recursive output-folder scanning, hash-based image matching, exact-byte fallback for non-images, live group streaming, cancel support, and Recycle Bin deletion
 
 ## Project Structure
 

@@ -27,7 +27,7 @@ The **IG_Sorter** project is a Qt 6 C++ desktop application (`IG_Sorter_Qt/`). I
 - **`DirectoryCleanup`**: Safe two-phase rename to fix numbering gaps in output directories, with unknown name detection.
 - **`SorterEngine`**: Orchestrates the full pipeline: extension fixing -> cleanup -> grouping -> sorting.
 - **`ExtensionFixer`**: Detects and corrects mismatched file extensions using magic byte inspection.
-- **`DuplicateFinder`**: Detects duplicate files by byte size, normalized person name, and thumbnail similarity.
+- **`DuplicateFinder`**: Recursively scans configured output folders, caches file hashes, uses perceptual image hashes for visual matches, falls back to exact byte matching for non-images, and streams groups to the UI as they are discovered.
 - **`FileUtils`**: Safe copy-then-rename file move with no-overwrite guarantees.
 
 ### UI Layer
@@ -42,7 +42,7 @@ The **IG_Sorter** project is a Qt 6 C++ desktop application (`IG_Sorter_Qt/`). I
 - **`ImageThumbnail`**: Single selectable thumbnail widget with WebP decoder fallback.
 - **`AddPersonDialog`**: Modal dialog prompting for IRL name and optional Instagram account.
 - **`ReportScreen`**: Summary of sorting results, errors, and directory file counts.
-- **`DuplicateFinderScreen`**: Finds and removes duplicate files across output directories, with image previews and undo support.
+- **`DuplicateFinderScreen`**: Finds and removes duplicate files across output directories, with live scan progress, cancellation, streaming group discovery, image previews, and undo support.
 - **`SettingsDialog`**: Configuration for source folder, output folders, database path, batch size, and theme.
 
 ### Utilities

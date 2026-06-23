@@ -261,19 +261,24 @@ void MainWindow::showReportScreen() {
 }
 
 void MainWindow::showDuplicateFinderScreen() {
-    // Collect output directory paths
-    QStringList outputDirPaths;
+    // Collect directory paths to scan
+    QStringList scanDirPaths;
+    
+    // Add Output Folders
     for (const auto& folder : ConfigManager::instance()->outputFolders()) {
-        outputDirPaths.append(folder.path);
+        if (QDir(folder.path).exists()) {
+            scanDirPaths.append(folder.path);
+        }
     }
+    scanDirPaths.removeDuplicates();
 
-    if (outputDirPaths.isEmpty()) {
+    if (scanDirPaths.isEmpty()) {
         QMessageBox::warning(this, "No Directories",
-            "No output folders configured. Please open Settings and add at least one output folder.");
+            "No valid output folders configured. Please open Settings and configure your folders.");
         return;
     }
 
-    m_duplicateFinderScreen->setDirectories(outputDirPaths);
+    m_duplicateFinderScreen->setDirectories(scanDirPaths);
     m_stackedWidget->setCurrentWidget(m_duplicateFinderScreen);
     m_statusBar->showMessage("Ready to scan for duplicates.");
 }

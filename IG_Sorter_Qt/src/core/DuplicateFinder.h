@@ -5,12 +5,15 @@
 #include <QStringList>
 #include <QList>
 #include <QHash>
+#include <QSize>
 
 // Represents a single duplicate file entry
 struct DuplicateFile {
     QString filePath;
     QString fileName;
     qint64  fileSizeBytes;
+    QSize   dimensions;
+    bool    isColor = false;
 };
 
 // A group of files that are likely duplicates of each other
@@ -39,6 +42,7 @@ public:
 
 signals:
     void scanProgress(int filesScanned, int totalFiles);
+    void groupFound(const DuplicateGroup& group);
 
 private:
     // Extract the person name from a filename (e.g. "Michael Doherty 2.jpg" → "michael doherty")

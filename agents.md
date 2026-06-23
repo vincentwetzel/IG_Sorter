@@ -40,10 +40,11 @@ This is the primary implementation responsible for the following tasks:
 ## 2. The Duplicate Finder (`IG_Sorter_Qt/src/core/DuplicateFinder.*`)
 
 This tool focuses on maintaining storage efficiency:
-- **Byte-size Matching**: Scans destination directories to find files with the exact same file size in bytes.
-- **Name Verification**: Verifies potential duplicates by comparing normalized person names.
-- **Visual Similarity**: Compares thumbnails to reduce false positives.
-- **Review UI**: Presents potential duplicates in the Qt UI for manual review and deletion.
+- **Recursive Scanning**: Walks all files beneath each configured output directory.
+- **Cache-Aware Hashing**: Persists file metadata and hash results in the app data directory to speed up repeat scans.
+- **Image Matching**: Uses perceptual hashes for supported images, with exact-byte SHA-256 fallback when image decoding is unsupported.
+- **Streaming Review UI**: Presents duplicate groups to the Qt UI as they are discovered, with live progress and cancellation support.
+- **Manual Review and Deletion**: Keeps the existing preview and undo workflow for user-confirmed deletions.
 
 ## 3. Private Data and Downloader Tools
 

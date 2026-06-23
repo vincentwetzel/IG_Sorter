@@ -15,11 +15,13 @@
 #include <QDateTime>
 #include <QtConcurrent>
 #include <QFutureWatcher>
+#include <QThread>
+#include "utils/LogManager.h"
 
 // ─── DuplicateFinderScreen ──────────────────────────────────────────────────
 
 DuplicateFinderScreen::DuplicateFinderScreen(QWidget* parent)
-    : QWidget(parent), m_currentGroup(-1), m_totalDeleted(0), m_totalSkipped(0)
+    : QWidget(parent), m_currentGroup(-1), m_totalDeleted(0), m_totalSkipped(0), m_isScanning(false)
 {
     m_mainLayout = new QVBoxLayout(this);
     m_mainLayout->setSpacing(8);
@@ -33,6 +35,13 @@ DuplicateFinderScreen::DuplicateFinderScreen(QWidget* parent)
     headerFont.setBold(true);
     m_headerLabel->setFont(headerFont);
     m_mainLayout->addWidget(m_headerLabel);
+
+    // Permanent directories label
+    QLabel* dirLabel = new QLabel("<b>Target Folders to Scan:</b><br><i>No folders configured.</i>", this);
+    dirLabel->setObjectName("permanentDirLabel");
+    dirLabel->setWordWrap(true);
+    dirLabel->setStyleSheet("margin-bottom: 10px; font-size: 13px; background-color: rgba(128, 128, 128, 0.1); padding: 10px; border-radius: 6px;");
+    m_mainLayout->addWidget(dirLabel);
 
     // Progress bar (hidden until scanning)
     m_progressBar = new QProgressBar(this);
@@ -153,12 +162,32 @@ DuplicateFinderScreen::DuplicateFinderScreen(QWidget* parent)
 
 void DuplicateFinderScreen::setDirectories(const QStringList& dirs) {
     m_directories = dirs;
+
+    QLabel* dirLabel = findChild<QLabel*>("permanentDirLabel");
+    if (dirLabel) {
+        QString text = QString("<b>Target Folders to Scan (%1):</b><br>").arg(dirs.size());
+        for (const QString& dir : dirs) {
+            text += QString("&nbsp;&nbsp;• %1<br>").arg(QDir::toNativeSeparators(dir));
+        }
+        dirLabel->setText(text);
+    }
+
+    if (!m_isScanning && m_groups.isEmpty()) {
+        m_statusLabel->setText("Click <b>Scan for Duplicates</b> below to begin.");
+    }
 }
 
 void DuplicateFinderScreen::startScan() {
     if (m_directories.isEmpty()) {
         return;
     }
+
+    QString dirsStr = m_directories.join(", ");
+    LogManager::instance()->info(QString("DuplicateFinderScreen: 'Scan for Duplicates' button clicked. Target folders (%1): %2")
+                                     .arg(m_directories.size())
+                                     .arg(dirsStr));
+
+    qRegisterMetaType<DuplicateGroup>("DuplicateGroup");
 
     // Reset
     m_groups.clear();
@@ -170,8 +199,7 @@ void DuplicateFinderScreen::startScan() {
     // Show progress
     m_progressBar->setVisible(true);
     m_progressBar->setRange(0, 0);
-    m_statusLabel->setText("Scanning directories for duplicate files...");
-    m_scanButton->setEnabled(false);
+    m_statusLabel->setText(QString("Starting background scan on %1 folder(s)...").arg(m_directories.size()));
     m_previewGrid->setVisible(false);
     m_groupSummaryLabel->setVisible(false);
     m_keepingLabel->setVisible(false);
@@ -180,20 +208,90 @@ void DuplicateFinderScreen::startScan() {
     m_skipButton->setVisible(false);
     m_undoButton->setVisible(false);
 
-    // Async scan
-    auto* watcher = new QFutureWatcher<DuplicateScanResult>(this);
-    connect(watcher, &QFutureWatcher<DuplicateScanResult>::finished,
-            this, [this, watcher]() {
-                DuplicateScanResult result = watcher->result();
-                watcher->deleteLater();
-                m_groups = result.groups;
-                scanFinishedSlot();
-            });
+    m_isScanning = true;
 
-    watcher->setFuture(QtConcurrent::run([this]() {
-        DuplicateFinder finder;
-        return finder.scan(m_directories);
-    }));
+    // Repurpose button for cancellation
+    m_scanButton->disconnect();
+    m_scanButton->setText("Cancel Scan");
+    m_scanButton->setEnabled(true);
+
+    // Async scan
+    DuplicateFinder* finder = new DuplicateFinder(); // No parent to safely run in another thread
+    connect(finder, &DuplicateFinder::groupFound,
+            this, &DuplicateFinderScreen::handleGroupFound, Qt::QueuedConnection);
+    connect(finder, &DuplicateFinder::scanProgress,
+            this, [this](int current, int total) {
+                if (total == 0) {
+                    m_progressBar->setRange(0, 0);
+                    if (current == 0) {
+                        m_statusLabel->setText("Background scan active. Indexing files...");
+                    } else {
+                        m_statusLabel->setText(QString("Scanning %1 folder(s)... Found <b>%2</b> files so far.").arg(m_directories.size()).arg(QLocale().toString(current)));
+                    }
+                } else {
+                    m_progressBar->setRange(0, total);
+                    m_progressBar->setValue(current);
+                    
+                    int actualTotal = total / 2;
+                    QString phaseInfo;
+                    int displayCurrent;
+                    if (current <= actualTotal) {
+                        phaseInfo = "Step 1/2 (Hashing)";
+                        displayCurrent = current;
+                    } else {
+                        phaseInfo = "Step 2/2 (Comparing)";
+                        displayCurrent = current - actualTotal;
+                    }
+                    
+                    if (m_currentGroup == -1) {
+                        m_statusLabel->setText(
+                            QString("%1... <b>%2</b> / <b>%3</b> files")
+                                .arg(phaseInfo).arg(QLocale().toString(displayCurrent)).arg(QLocale().toString(actualTotal)));
+                    } else {
+                        m_statusLabel->setText(
+                            QString("%1... <b>%2</b> / <b>%3</b> files (Found <b>%4</b> groups)")
+                                .arg(phaseInfo).arg(QLocale().toString(displayCurrent)).arg(QLocale().toString(actualTotal)).arg(m_groups.size()));
+                    }
+                }
+            }, Qt::QueuedConnection);
+
+    // Use QThread explicitly to avoid QThreadPool exhaustion from previous tasks hanging
+    QThread* thread = QThread::create([this, finder, dirs = m_directories]() {
+        finder->scan(dirs);
+        
+        QMetaObject::invokeMethod(this, [this, finder]() {
+            finder->deleteLater();
+            m_isScanning = false;
+            
+            bool wasCancelled = !m_scanButton->isEnabled();
+            if (wasCancelled) {
+                m_groups.clear(); // Ensure we don't show partial garbage
+            }
+
+            scanFinishedSlot();
+
+            if (wasCancelled) {
+                m_statusLabel->setText("Scan cancelled by user.");
+            }
+        }, Qt::QueuedConnection);
+    });
+    
+    QMetaObject::Connection conn = connect(m_scanButton, &QPushButton::clicked, this, [thread, this]() {
+        LogManager::instance()->info("DuplicateFinderScreen: Cancel requested.");
+        m_statusLabel->setText("Cancelling scan... Please wait.");
+        m_scanButton->setEnabled(false);
+        thread->requestInterruption();
+    });
+
+    connect(thread, &QThread::finished, this, [this, conn]() {
+        QObject::disconnect(conn);
+        connect(m_scanButton, &QPushButton::clicked, this, &DuplicateFinderScreen::startScan);
+        m_scanButton->setText("Scan for Duplicates");
+        m_scanButton->setEnabled(true);
+    });
+
+    connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+    thread->start();
 }
 
 void DuplicateFinderScreen::scanFinishedSlot() {
@@ -206,33 +304,99 @@ void DuplicateFinderScreen::scanFinishedSlot() {
         return;
     }
 
-    // Calculate stats
-    int totalFiles = 0;
-    qint64 reclaimableBytes = 0;
-    for (const auto& g : m_groups) {
-        totalFiles += g.files.size();
-        if (!g.files.isEmpty()) {
-            reclaimableBytes += g.files[0].fileSizeBytes * (g.files.size() - 1);
+    if (m_currentGroup >= m_groups.size()) {
+        m_previewGrid->clear();
+        m_previewGrid->setVisible(false);
+        m_groupSummaryLabel->setVisible(false);
+        m_keepingLabel->setVisible(false);
+        m_deletingLabel->setVisible(false);
+        m_deleteNextButton->setVisible(false);
+        m_skipButton->setVisible(false);
+
+        m_headerLabel->setText("All Duplicate Groups Processed!");
+        m_statusLabel->setText(
+            QString("Complete — deleted <b>%1</b> duplicate file(s), "
+                    "skipped <b>%2</b> group(s).")
+                .arg(m_totalDeleted).arg(m_totalSkipped));
+    } else {
+        // Update stats label
+        int totalFiles = 0;
+        qint64 reclaimableBytes = 0;
+        for (const auto& g : m_groups) {
+            totalFiles += g.files.size();
+            if (!g.files.isEmpty()) {
+                reclaimableBytes += g.files[0].fileSizeBytes * (g.files.size() - 1);
+            }
+        }
+
+        QString reclaimableStr;
+        if (reclaimableBytes >= (qint64)1024 * 1024 * 1024) {
+            reclaimableStr = QString("%1 GB").arg(reclaimableBytes / (1024.0 * 1024.0 * 1024.0), 0, 'f', 1);
+        } else if (reclaimableBytes >= 1024 * 1024) {
+            reclaimableStr = QString("%1 MB").arg(reclaimableBytes / (1024.0 * 1024.0), 0, 'f', 1);
+        } else {
+            reclaimableStr = QString("%1 KB").arg(reclaimableBytes / 1024.0, 0, 'f', 1);
+        }
+
+        m_statusLabel->setText(
+            QString("Scan complete! Found <b>%1</b> group(s) of duplicates — "
+                    "%2 files can be removed, freeing <b>%3</b>.")
+                .arg(m_groups.size()).arg(totalFiles - m_groups.size()).arg(reclaimableStr));
+
+        // Update summary label with final group count, but do NOT reload the group images
+        // as that would discard the user's active selections during scanning.
+        if (m_currentGroup >= 0 && m_currentGroup < m_groups.size()) {
+            const DuplicateGroup& currentGrp = m_groups[m_currentGroup];
+            qint64 totalSize = 0;
+            for (const auto& file : currentGrp.files) {
+                totalSize += file.fileSizeBytes;
+            }
+            QString fileSizeStr;
+            if (totalSize >= (qint64)1024 * 1024 * 1024) {
+                fileSizeStr = QString("%1 GB").arg(totalSize / (1024.0 * 1024.0 * 1024.0), 0, 'f', 1);
+            } else if (totalSize >= 1024 * 1024) {
+                fileSizeStr = QString("%1 MB").arg(totalSize / (1024.0 * 1024.0), 0, 'f', 1);
+            } else if (totalSize >= 1024) {
+                fileSizeStr = QString("%1 KB").arg(totalSize / 1024.0, 0, 'f', 1);
+            } else {
+                fileSizeStr = QString("%1 B").arg(totalSize);
+            }
+            m_groupSummaryLabel->setText(
+                QString("Group %1 of %2  •  %3 files  •  %4 total")
+                    .arg(m_currentGroup + 1).arg(m_groups.size()).arg(currentGrp.files.size()).arg(fileSizeStr));
         }
     }
+}
 
-    QString reclaimableStr;
-    if (reclaimableBytes >= (qint64)1024 * 1024 * 1024) {
-        reclaimableStr = QString("%1 GB").arg(reclaimableBytes / (1024.0 * 1024.0 * 1024.0), 0, 'f', 1);
-    } else if (reclaimableBytes >= 1024 * 1024) {
-        reclaimableStr = QString("%1 MB").arg(reclaimableBytes / (1024.0 * 1024.0), 0, 'f', 1);
+void DuplicateFinderScreen::handleGroupFound(const DuplicateGroup& group) {
+    m_groups.append(group);
+
+    if (m_currentGroup == -1) {
+        m_currentGroup = 0;
+        loadGroup(0);
     } else {
-        reclaimableStr = QString("%1 KB").arg(reclaimableBytes / 1024.0, 0, 'f', 1);
+        // Just update the group summary label with the new total number of groups
+        if (m_currentGroup >= 0 && m_currentGroup < m_groups.size()) {
+            const DuplicateGroup& currentGrp = m_groups[m_currentGroup];
+            qint64 totalSize = 0;
+            for (const auto& file : currentGrp.files) {
+                totalSize += file.fileSizeBytes;
+            }
+            QString fileSizeStr;
+            if (totalSize >= (qint64)1024 * 1024 * 1024) {
+                fileSizeStr = QString("%1 GB").arg(totalSize / (1024.0 * 1024.0 * 1024.0), 0, 'f', 1);
+            } else if (totalSize >= 1024 * 1024) {
+                fileSizeStr = QString("%1 MB").arg(totalSize / (1024.0 * 1024.0), 0, 'f', 1);
+            } else if (totalSize >= 1024) {
+                fileSizeStr = QString("%1 KB").arg(totalSize / 1024.0, 0, 'f', 1);
+            } else {
+                fileSizeStr = QString("%1 B").arg(totalSize);
+            }
+            m_groupSummaryLabel->setText(
+                QString("Group %1 of %2  •  %3 files  •  %4 total")
+                    .arg(m_currentGroup + 1).arg(m_groups.size()).arg(currentGrp.files.size()).arg(fileSizeStr));
+        }
     }
-
-    m_statusLabel->setText(
-        QString("Found <b>%1</b> group(s) of duplicates — "
-                "%2 files could be removed, freeing <b>%3</b>.")
-            .arg(m_groups.size()).arg(totalFiles).arg(reclaimableStr));
-
-    // Auto-load first group
-    m_currentGroup = 0;
-    loadGroup(0);
 }
 
 void DuplicateFinderScreen::loadGroup(int index) {
@@ -252,20 +416,23 @@ void DuplicateFinderScreen::loadGroup(int index) {
     m_previewGrid->selectSingle(0);
 
     // Group summary
+    qint64 totalSize = 0;
+    for (const auto& file : group.files) {
+        totalSize += file.fileSizeBytes;
+    }
     QString fileSizeStr;
-    qint64 size = group.files[0].fileSizeBytes;
-    if (size >= (qint64)1024 * 1024 * 1024) {
-        fileSizeStr = QString("%1 GB").arg(size / (1024.0 * 1024.0 * 1024.0), 0, 'f', 1);
-    } else if (size >= 1024 * 1024) {
-        fileSizeStr = QString("%1 MB").arg(size / (1024.0 * 1024.0), 0, 'f', 1);
-    } else if (size >= 1024) {
-        fileSizeStr = QString("%1 KB").arg(size / 1024.0, 0, 'f', 1);
+    if (totalSize >= (qint64)1024 * 1024 * 1024) {
+        fileSizeStr = QString("%1 GB").arg(totalSize / (1024.0 * 1024.0 * 1024.0), 0, 'f', 1);
+    } else if (totalSize >= 1024 * 1024) {
+        fileSizeStr = QString("%1 MB").arg(totalSize / (1024.0 * 1024.0), 0, 'f', 1);
+    } else if (totalSize >= 1024) {
+        fileSizeStr = QString("%1 KB").arg(totalSize / 1024.0, 0, 'f', 1);
     } else {
-        fileSizeStr = QString("%1 B").arg(size);
+        fileSizeStr = QString("%1 B").arg(totalSize);
     }
 
     m_groupSummaryLabel->setText(
-        QString("Group %1 of %2  •  %3 files  •  %4 each")
+        QString("Group %1 of %2  •  %3 files  •  %4 total")
             .arg(index + 1).arg(m_groups.size()).arg(group.files.size()).arg(fileSizeStr));
     m_groupSummaryLabel->setVisible(true);
 
@@ -318,7 +485,6 @@ void DuplicateFinderScreen::updateUndoButton() {
 void DuplicateFinderScreen::advanceToNextGroup() {
     m_currentGroup++;
     if (m_currentGroup >= m_groups.size()) {
-        // All done
         m_previewGrid->clear();
         m_previewGrid->setVisible(false);
         m_groupSummaryLabel->setVisible(false);
@@ -327,11 +493,16 @@ void DuplicateFinderScreen::advanceToNextGroup() {
         m_deleteNextButton->setVisible(false);
         m_skipButton->setVisible(false);
 
-        m_headerLabel->setText("All Duplicate Groups Processed!");
-        m_statusLabel->setText(
-            QString("Complete — deleted <b>%1</b> duplicate file(s), "
-                    "skipped <b>%2</b> group(s).")
-                .arg(m_totalDeleted).arg(m_totalSkipped));
+        if (m_isScanning) {
+            m_headerLabel->setText("Scanning for more duplicates...");
+            m_statusLabel->setText("All currently found duplicates resolved. Waiting for background scan to finish...");
+        } else {
+            m_headerLabel->setText("All Duplicate Groups Processed!");
+            m_statusLabel->setText(
+                QString("Complete — deleted <b>%1</b> duplicate file(s), "
+                        "skipped <b>%2</b> group(s).")
+                    .arg(m_totalDeleted).arg(m_totalSkipped));
+        }
         return;
     }
 

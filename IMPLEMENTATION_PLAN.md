@@ -862,6 +862,10 @@ A comprehensive section-by-section audit identified these additional fixes:
 | 15 | Medium | `SorterEngine::runCleanup()` is now properly wired — `MainWindow` calls `m_engine->runCleanup()` via `QFutureWatcher` instead of bypassing the engine with raw `QtConcurrent::run` |
 | 16 | Low | `SortReportData::filesByAccountType` map added; `SortingScreen` tracks per-type file counts during sort; `ReportScreen` renders "── Accounts by Type ──" section |
 | 17 | Low | `QSet` include explicitly added to `FileGrouper.cpp` (was relying on transitive include) |
+| 18 | Medium | `DuplicateFinder` now scans output folders recursively, caches file metadata and hashes, emits live group discovery, and treats unsupported image reads as exact-byte duplicates when name/size checks match |
+| 19 | Medium | `DuplicateFinderScreen` now supports cancel/restart behavior, live scan progress updates, and incremental group loading while scanning continues |
+| 20 | Medium | `MainWindow::showDuplicateFinderScreen()` now filters out missing output folders and removes duplicates before launching the finder |
+| 21 | Low | `SortingScreen::handleSortToFolder()` now pumps events after releasing preview image handles and removes only files that no longer exist at the source path |
 
 ### Intentional Deviations from Plan
 

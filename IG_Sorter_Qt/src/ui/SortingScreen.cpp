@@ -15,6 +15,7 @@
 #include <QDesktopServices>
 #include <QUrl>
 #include <QFile>
+#include <QCoreApplication>
 
 SortingScreen::SortingScreen(QWidget* parent)
     : QWidget(parent), m_currentGroup(0), m_currentSubBatch(0),
@@ -378,6 +379,7 @@ void SortingScreen::handleSortToFolder(int folderIndex) {
     // Release image handles from thumbnails before moving files
     // This frees any file handles held by Qt's image readers on Windows
     m_previewGrid->releaseImages(selected);
+    QCoreApplication::processEvents();
 
     if (m_engine) {
         SortResult result = m_engine->sortFiles(
@@ -393,13 +395,11 @@ void SortingScreen::handleSortToFolder(int folderIndex) {
         QString typeKey = DatabaseManager::accountTypeToString(group.accountType);
         m_filesByAccountType[typeKey] += result.filesSorted;
 
-        // Only remove successfully sorted files from the grid
-        // Build a set of successfully moved file paths
-        int expectedSuccess = result.filesSorted;
+        // Only remove files that no longer exist at the source path (successfully moved)
         for (const QString& path : selected) {
-            if (expectedSuccess <= 0) break;
-            m_previewGrid->removePath(path);
-            expectedSuccess--;
+            if (!QFile::exists(path)) {
+                m_previewGrid->removePath(path);
+            }
         }
 
         // Save the resolved name to the current group so it persists for any remaining

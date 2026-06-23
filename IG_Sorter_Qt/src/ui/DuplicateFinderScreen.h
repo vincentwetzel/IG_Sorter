@@ -25,6 +25,7 @@ signals:
 private slots:
     void startScan();
     void scanFinishedSlot();
+    void handleGroupFound(const DuplicateGroup& group);
     void handleDeleteAndNext();
     void handleSkip();
     void handleUndo();
@@ -62,5 +63,6 @@ private:
     int                  m_currentGroup;
     int                  m_totalDeleted;
     int                  m_totalSkipped;
+    bool                 m_isScanning;
     QList<DeleteRecord>  m_deleteHistory;  // stack of delete operations
 };

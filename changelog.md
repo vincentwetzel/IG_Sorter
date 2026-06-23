@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **IDE-style Tab autocomplete** for "Who is in these photos" field: gray ghost text appears after typed text, Tab commits the full name with proper capitalization and closes the completer dropdown
 - **App-wide button styling via QSS themes**: removed all inline `setStyleSheet()` calls, added semantic button variants (#deleteButton, #curatorSortButton, #scanButton, etc.) to both light and dark themes
 - **Find Duplicate Files screen**: New menu option launching a dedicated duplicate finder with image preview grid, visual similarity comparison, and one-click delete with undo
+  - Recursive scanning of all configured output folders
+  - Live streaming of groups as they are discovered during the scan
+  - Cancel/restart support while the background worker is running
+  - Hash cache persisted under the app data directory to speed up repeat scans
+  - Perceptual image hashing for visual matches and exact-byte fallback for unsupported images / non-images
   - Groups files by byte size AND extracted person name (e.g. "Michael Doherty" vs "Michael Zanderigo" are never paired)
   - Visual similarity check: 16x16 grayscale thumbnail comparison, 85% similarity threshold required
   - Files sorted by trailing number in filename (lowest number shown first, auto-selected as the keeper)
@@ -43,6 +48,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Equal button widths**: Skip Batch, Select All, and Delete Selected buttons now have fixed equal widths for proper centering
 - **Account name label centering**: Curator/IrlOnly account label is now centered on the full screen width using QGridLayout, independent of the Open Instagram button
 - **Removed files selected counter**: The "X files selected" label has been removed from the sorting UI
+- **Duplicate finder scan flow**: The duplicate finder now streams matches into the UI while scanning, updates progress in two phases, and preserves already-visible selections while new groups arrive
+- **Output-folder validation**: Missing or duplicate output directories are filtered out before the duplicate finder opens
+- **Sort-to-folder file removal**: The sorting screen now only removes thumbnails whose source file actually disappeared after a move, which avoids stale UI state when a file move fails
 
 ### Changed
 - **Targeted cache updates**: Instead of invalidating the entire grouping cache when a new account is added, only the affected groups are updated in-place (O(n) where n = number of groups)
