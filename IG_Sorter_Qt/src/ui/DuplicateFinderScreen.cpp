@@ -60,6 +60,7 @@ DuplicateFinderScreen::DuplicateFinderScreen(QWidget* parent)
 
     // Image preview grid
     m_previewGrid = new ImagePreviewGrid(this);
+    m_previewGrid->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Ignored); // Prevent grid from pushing window size
     m_previewGrid->setVisible(false);
     m_mainLayout->addWidget(m_previewGrid, 1);
 
@@ -70,6 +71,7 @@ DuplicateFinderScreen::DuplicateFinderScreen(QWidget* parent)
     m_keepingLabel = new QLabel(this);
     m_keepingLabel->setAlignment(Qt::AlignCenter);
     m_keepingLabel->setWordWrap(true);
+    m_keepingLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum); // Constrain vertical growth
     QFont keepFont = m_keepingLabel->font();
     keepFont.setPointSize(13);
     keepFont.setBold(true);
@@ -81,6 +83,7 @@ DuplicateFinderScreen::DuplicateFinderScreen(QWidget* parent)
     m_deletingLabel = new QLabel(this);
     m_deletingLabel->setAlignment(Qt::AlignCenter);
     m_deletingLabel->setWordWrap(true);
+    m_deletingLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum); // Constrain vertical growth
     QFont deleteFont = m_deletingLabel->font();
     deleteFont.setPointSize(13);
     deleteFont.setBold(true);
@@ -96,6 +99,7 @@ DuplicateFinderScreen::DuplicateFinderScreen(QWidget* parent)
         "Click Scan to search output folders for duplicate files.", this);
     m_statusLabel->setAlignment(Qt::AlignCenter);
     m_statusLabel->setWordWrap(true);
+    m_statusLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum); // Constrain status label height
     QFont statusFont = m_statusLabel->font();
     statusFont.setPointSize(12);
     m_statusLabel->setFont(statusFont);
@@ -460,9 +464,14 @@ void DuplicateFinderScreen::updateInfoLabels() {
         m_deletingLabel->clear();
     } else {
         QString firstName = QFileInfo(selected.first()).fileName();
+        
+        // Elide the filename to prevent long names from wrapping and expanding the window height
+        QFontMetrics metrics(m_keepingLabel->font());
+        QString elidedName = metrics.elidedText(firstName, Qt::ElideMiddle, 350);
+
         m_keepingLabel->setText(
             QString("✓ Keeping <b>%1</b><br><small>%2</small>")
-                .arg(keepCount).arg(firstName));
+                .arg(keepCount).arg(elidedName));
         m_deletingLabel->setText(
             QString("✗ Deleting <b>%1</b> duplicate(s)")
                 .arg(deleteCount));

@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed the Instaloader downloader script, download history, downloader settings, downloaded media, and private-data submodule from this project. Downloader tooling and private data now live outside this repository.
 
 ### Added
+- **Duplicate finder scan quality improvements**: duplicate matching now uses a cached 16x16 grayscale thumbnail similarity pass on top of perceptual hashes, with a name-based fast reject for already-sorted files to reduce false positives
+- **Duplicate finder UI sizing fixes**: the duplicate finder screen now constrains label growth and elides long filenames so the window stays stable during review
 - **IDE-style Tab autocomplete** for "Who is in these photos" field: gray ghost text appears after typed text, Tab commits the full name with proper capitalization and closes the completer dropdown
 - **App-wide button styling via QSS themes**: removed all inline `setStyleSheet()` calls, added semantic button variants (#deleteButton, #curatorSortButton, #scanButton, etc.) to both light and dark themes
 - **Find Duplicate Files screen**: New menu option launching a dedicated duplicate finder with image preview grid, visual similarity comparison, and one-click delete with undo
@@ -35,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Comma-formatted numbers**: Large file counts in the report screen and sorting header now display with thousand separators (e.g. `15,634`)
 
 ### Fixed
+- **Duplicate finder visual comparison**: grayscale pixel comparisons now use actual pixel colors instead of palette indices, which improves similarity scoring for real images
+- **Duplicate finder scanning stability**: progress updates now keep the UI responsive during long scans, and the hash cache version was bumped so stale cache entries do not mix with the new thumbnail data
 - **AddPersonDialog no longer shown unnecessarily**: For Curator and IrlOnly accounts, the dialog is now skipped when the model name already exists in the database and there's no account to link
 - **Curator/IrlOnly model name separation**: The name field for Curator and IrlOnly accounts now correctly represents the MODEL in the photos (per-batch), not the account owner (photographer). After adding a curator, the text field clears so the user can enter the model's name
 - **Curator account type persistence**: `handleAddUnknownAccount` now uses `dialogType` (what the user selected in the Add Person dialog) for the group's account type, ensuring Curator sorting uses the text field for model name
@@ -53,6 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Sort-to-folder file removal**: The sorting screen now only removes thumbnails whose source file actually disappeared after a move, which avoids stale UI state when a file move fails
 
 ### Changed
+- **Duplicate finder compare path**: after a perceptual-hash match, the scanner now performs a fast in-memory 16x16 grayscale similarity check before confirming a duplicate group
+- **Duplicate finder list ordering**: already-sorted filenames are parsed up front so files with different person names are not compared against one another unnecessarily
 - **Targeted cache updates**: Instead of invalidating the entire grouping cache when a new account is added, only the affected groups are updated in-place (O(n) where n = number of groups)
 - **Curator/IrlOnly name handling**: For these account types, `irlName` is no longer persisted to the group state or UI. The text field is cleared after each batch to allow entering a different model name
 - **FileGrouper optimization**: For Curator and IrlOnly accounts found in the database, `irlName` is no longer set since the account is the photographer, not the model
