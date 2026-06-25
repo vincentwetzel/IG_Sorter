@@ -35,48 +35,41 @@ bool SorterEngine::initialize(const QString& sourceDir, const QStringList& outpu
 }
 
 CleanupReport SorterEngine::runCleanup() {
-    LogManager::instance()->info(QString("Starting cleanup on %1 directories (parallel)").arg(m_outputDirs.size()));
+    LogManager::instance()->info(QString("Starting cleanup on %1 directories (sequential)").arg(m_outputDirs.size()));
 
-    // Shared results protected by mutex
-    QMutex resultsMutex;
     CleanupReport combinedReport;
 
-    // Run each directory in its own thread
-    QFutureSynchronizer<void> sync;
+    // Run each directory sequentially to prevent concurrent logging crashes and race conditions
     for (const QString& dir : m_outputDirs) {
-        sync.addFuture(QtConcurrent::run([this, dir, &combinedReport, &resultsMutex]() {
-            LogManager::instance()->info(QString("Cleaning directory: %1").arg(dir));
+        LogManager::instance()->info(QString("Cleaning directory: %1").arg(dir));
 
-            // Create DirectoryCleanup instance on this worker thread
-            auto* cleanup = new DirectoryCleanup(m_db);
+        // Create DirectoryCleanup instance
+        auto* cleanup = new DirectoryCleanup(m_db);
 
-            // Connect progress signal — emit via queued invokeMethod to main thread
-            QObject::connect(cleanup, &DirectoryCleanup::directoryProgress,
-                             this, [this, dir](const QString& d, int current, int total) {
-                Q_UNUSED(d);
-                QMetaObject::invokeMethod(this, [this, dir, current, total]() {
-                    emit cleanupProgress(dir, current, total);
-                }, Qt::QueuedConnection);
-            }, Qt::DirectConnection);
-
-            CleanupReport report = cleanup->run(dir);
-            cleanup->deleteLater();
-
-            // Merge results under mutex
-            QMutexLocker locker(&resultsMutex);
-            combinedReport.totalDirectoriesScanned += report.totalDirectoriesScanned;
-            combinedReport.totalFilesRenamed += report.totalFilesRenamed;
-            combinedReport.unresolvedIssues.append(report.unresolvedIssues);
-            LogManager::instance()->logDirectoryCleaned(dir, report.totalFilesRenamed);
-
-            // Signal that this directory is done (queued to main thread)
-            QMetaObject::invokeMethod(this, [this, dir, count = report.totalFilesRenamed]() {
-                emit cleanupDirectoryDone(dir, count);
+        // Connect progress signal — emit via queued invokeMethod to main thread
+        QObject::connect(cleanup, &DirectoryCleanup::directoryProgress,
+                         this, [this, dir](const QString& d, int current, int total) {
+            Q_UNUSED(d);
+            QMetaObject::invokeMethod(this, [this, dir, current, total]() {
+                emit cleanupProgress(dir, current, total);
             }, Qt::QueuedConnection);
-        }));
+        }, Qt::DirectConnection);
+
+        CleanupReport report = cleanup->run(dir);
+        delete cleanup; 
+
+        // Merge results
+        combinedReport.totalDirectoriesScanned += report.totalDirectoriesScanned;
+        combinedReport.totalFilesRenamed += report.totalFilesRenamed;
+        combinedReport.unresolvedIssues.append(report.unresolvedIssues);
+        LogManager::instance()->logDirectoryCleaned(dir, report.totalFilesRenamed);
+
+        // Signal that this directory is done (queued to main thread)
+        QMetaObject::invokeMethod(this, [this, dir, count = report.totalFilesRenamed]() {
+            emit cleanupDirectoryDone(dir, count);
+        }, Qt::QueuedConnection);
     }
 
-    sync.waitForFinished();
     return combinedReport;
 }
 
@@ -130,8 +123,8 @@ SortResult SorterEngine::sortFiles(const QStringList& filePaths,
     // The name generation + file move is done under the mutex to avoid
     // two threads generating the same filename.
     QFutureSynchronizer<void> sync;
-    for (const auto& filePath : filePaths) {
-        sync.addFuture(QtConcurrent::run([&]() {
+    for (const QString& filePath : filePaths) {
+        sync.addFuture(QtConcurrent::run([&, filePath]() {
             QString ext;
             {
                 QFileInfo fi(filePath);

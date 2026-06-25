@@ -1,29 +1,31 @@
 #include "core/DuplicateFinder.h"
-#include <QDir>
-#include <QDirIterator>
-#include <QFileInfo>
-#include <QFile>
-#include <QRegularExpression>
-#include <QImage>
-#include <QImageReader>
+
 #include <algorithm>
+#include <atomic>
 #include <climits>
 #include <cmath>
-#include <QCryptographicHash>
-#include "utils/LogManager.h"
 #include <cstdint>
-#include <QThread>
-#include <QtConcurrent>
-#include <QFuture>
-#include <QElapsedTimer>
+
 #include <QCoreApplication>
-#include <bitset>
-#include <atomic>
-#include <QStandardPaths>
-#include <QDateTime>
+#include <QCryptographicHash>
 #include <QDataStream>
+#include <QDateTime>
+#include <QDir>
+#include <QDirIterator>
+#include <QElapsedTimer>
+#include <QFile>
+#include <QFileInfo>
+#include <QFuture>
+#include <QImage>
+#include <QImageReader>
 #include <QMutex>
 #include <QMutexLocker>
+#include <QRegularExpression>
+#include <QStandardPaths>
+#include <QThread>
+#include <QtConcurrent>
+
+#include "utils/LogManager.h"
 
 struct CachedHash {
     qint64 size = 0;
@@ -36,7 +38,7 @@ struct CachedHash {
 };
 
 inline QDataStream &operator<<(QDataStream &out, const CachedHash &c) {
-    out << c.size << c.lastModified << c.isImage << (quint64)c.dHash << c.exactHash << c.dimensions << c.isColor;
+    out << c.size << c.lastModified << c.isImage << static_cast<quint64>(c.dHash) << c.exactHash << c.dimensions << c.isColor;
     return out;
 }
 
@@ -48,8 +50,7 @@ inline QDataStream &operator>>(QDataStream &in, CachedHash &c) {
 }
 
 DuplicateFinder::DuplicateFinder(QObject* parent)
-    : QObject(parent)
-{
+    : QObject(parent) {
 }
 
 QString DuplicateFinder::extractPersonName(const QString& fileName) {
@@ -58,12 +59,14 @@ QString DuplicateFinder::extractPersonName(const QString& fileName) {
     QString baseName = fi.completeBaseName();  // "John Smith 13" from "John Smith 13.jpg"
 
     // Remove trailing number(s): everything from the last space+number sequence
-    static QRegularExpression trailingNum(R"(\s+\d+\s*$)");
+    const static QRegularExpression trailingNum(R"((\s+\d+)+$)");
     QString name = baseName;
-    while (trailingNum.match(name).hasMatch()) {
-        name = trailingNum.match(name).capturedStart(0) == -1
-                   ? name
-                   : name.left(trailingNum.match(name).capturedStart(0));
+    auto match = trailingNum.match(name);
+    if (match.hasMatch()) {
+        int start = match.capturedStart(0);
+        if (start != -1) {
+            name = name.left(start);
+        }
     }
     return name.trimmed().toLower();
 }
@@ -93,9 +96,10 @@ double DuplicateFinder::visualSimilarity(const QString& pathA, const QString& pa
     double totalDiff = 0.0;
     int pixelCount = thumbSize * thumbSize;
     for (int y = 0; y < thumbSize; ++y) {
+        const uchar* lineA = imgA.constScanLine(y);
+        const uchar* lineB = imgB.constScanLine(y);
         for (int x = 0; x < thumbSize; ++x) {
-            int diff = std::abs(qGray(imgA.pixel(x, y)) - qGray(imgB.pixel(x, y)));
-            totalDiff += diff;
+            totalDiff += std::abs(lineA[x] - lineB[x]);
         }
     }
 
@@ -144,6 +148,7 @@ DuplicateScanResult DuplicateFinder::scan(const QStringList& directories) {
         bool cached = false;
         QImage lowResImg;
         QString parsedPersonName;
+        qint64 lastModified = 0;
     };
 
     QVector<FileHashData> fileData;
@@ -153,11 +158,15 @@ DuplicateScanResult DuplicateFinder::scan(const QStringList& directories) {
         LogManager::instance()->info(QString("DuplicateFinder: Scanning directory: %1").arg(dirPath));
         QDirIterator it(dirPath, QDir::Files | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
         while (it.hasNext()) {
-            if (QThread::currentThread()->isInterruptionRequested()) return result;
+            if (QThread::currentThread()->isInterruptionRequested()) {
+                return result;
+            }
 
             it.next();
             QFileInfo entry = it.fileInfo();
-            if (entry.size() <= 0) continue; // Skip empty/corrupted files
+            if (entry.size() <= 0) {
+                continue; // Skip empty/corrupted files
+            }
             
             fileCount++;
             if (fileCount <= 20) {
@@ -180,6 +189,7 @@ DuplicateScanResult DuplicateFinder::scan(const QStringList& directories) {
             // This is virtually free as QDirIterator already loaded it.
             qint64 size = entry.size();
             qint64 modTime = entry.lastModified().toMSecsSinceEpoch();
+            fd.lastModified = modTime;
 
             auto cacheIt = cache.find(fd.df.filePath);
             if (cacheIt != cache.end() && cacheIt->size == size && cacheIt->lastModified == modTime) {
@@ -192,7 +202,7 @@ DuplicateScanResult DuplicateFinder::scan(const QStringList& directories) {
             }
 
             // Pre-parse the person name if the file is already sorted
-            static QRegularExpression sortedPattern(R"(^(.+?)\s+(\d+)$)");
+            const static QRegularExpression sortedPattern(R"(^(.+?)\s+(\d+)$)");
             auto nameMatch = sortedPattern.match(entry.completeBaseName());
             if (nameMatch.hasMatch()) {
                 fd.parsedPersonName = nameMatch.captured(1).trimmed().toLower();
@@ -219,7 +229,9 @@ DuplicateScanResult DuplicateFinder::scan(const QStringList& directories) {
     QThread* scanThread = QThread::currentThread();
 
     auto hashFunc = [&](FileHashData& data) {
-        if (scanThread->isInterruptionRequested()) return;
+        if (scanThread->isInterruptionRequested()) {
+            return;
+        }
 
         if (data.cached) {
             hashedCount++;
@@ -230,18 +242,16 @@ DuplicateScanResult DuplicateFinder::scan(const QStringList& directories) {
         if (!format.isEmpty()) {
             QImageReader reader(data.df.filePath);
             data.df.dimensions = reader.size();
-            reader.setScaledSize(QSize(256, 256));
+            reader.setScaledSize(QSize(16, 16));
             QImage img = reader.read();
             
             if (!img.isNull()) {
-                // Extract and cache 16x16 grayscale thumbnail for super-fast visual comparison in Step 3
-                QImage thumb = img.scaled(16, 16, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-                data.lowResImg = thumb.convertToFormat(QImage::Format_Grayscale8);
+                data.lowResImg = img.convertToFormat(QImage::Format_Grayscale8);
 
-                img = img.scaled(9, 8, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+                QImage img9x8 = img.scaled(9, 8, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
                 
                 // Check if the image has color before grayscaling
-                QImage imgColor = img.convertToFormat(QImage::Format_RGB32);
+                QImage imgColor = img9x8.convertToFormat(QImage::Format_RGB32);
                 long colorDiff = 0;
                 for (int y = 0; y < 8; ++y) {
                     const QRgb* line = reinterpret_cast<const QRgb*>(imgColor.constScanLine(y));
@@ -256,11 +266,11 @@ DuplicateScanResult DuplicateFinder::scan(const QStringList& directories) {
                 // Average difference > 8 per pixel allows for compression artifacts and warm/sepia tones on B&W images
                 data.df.isColor = (colorDiff / 72) > 8;
 
-                img = img.convertToFormat(QImage::Format_Grayscale8);
+                QImage imgGray = img9x8.convertToFormat(QImage::Format_Grayscale8);
                 
                 int sum = 0;
                 for (int y = 0; y < 8; ++y) {
-                    const uchar* line = img.constScanLine(y);
+                    const uchar* line = imgGray.constScanLine(y);
                     for (int x = 0; x < 9; ++x) {
                         sum += line[x];
                     }
@@ -268,7 +278,7 @@ DuplicateScanResult DuplicateFinder::scan(const QStringList& directories) {
                 int avg = sum / 72;
                 int totalVariance = 0;
                 for (int y = 0; y < 8; ++y) {
-                    const uchar* line = img.constScanLine(y);
+                    const uchar* line = imgGray.constScanLine(y);
                     for (int x = 0; x < 9; ++x) {
                         totalVariance += std::abs(line[x] - avg);
                     }
@@ -282,7 +292,7 @@ DuplicateScanResult DuplicateFinder::scan(const QStringList& directories) {
                     uint64_t hash = 0;
                     int bit = 0;
                     for (int y = 0; y < 8; ++y) {
-                        const uchar* line = img.constScanLine(y);
+                        const uchar* line = imgGray.constScanLine(y);
                         for (int x = 0; x < 8; ++x) {
                             if (line[x] < line[x + 1]) {
                                 hash |= (1ULL << bit);
@@ -302,10 +312,9 @@ DuplicateScanResult DuplicateFinder::scan(const QStringList& directories) {
             LogManager::instance()->info(QString("  -> Not a recognized image format: %1").arg(data.df.fileName));
         }
 
-        QFileInfo fi(data.df.filePath);
         CachedHash ch;
         ch.size = data.df.fileSizeBytes;
-        ch.lastModified = fi.lastModified().toMSecsSinceEpoch();
+        ch.lastModified = data.lastModified;
         ch.isImage = data.isImage;
         ch.dHash = data.pHash;
         ch.exactHash = data.exactHash;
@@ -390,7 +399,9 @@ DuplicateScanResult DuplicateFinder::scan(const QStringList& directories) {
             progressTimer.restart();
         }
 
-        if (fileData[i].matched) continue;
+        if (fileData[i].matched) {
+            continue;
+        }
 
         QList<DuplicateFile> cluster;
         cluster.append(fileData[i].df);
@@ -410,7 +421,9 @@ DuplicateScanResult DuplicateFinder::scan(const QStringList& directories) {
                 progressTimer.restart();
             }
 
-            if (fileData[j].matched) continue;
+            if (fileData[j].matched) {
+                continue;
+            }
 
             // 1. Fast Name Discard for sorted files (different people cannot be duplicates)
             if (!fileData[i].parsedPersonName.isEmpty() && !fileData[j].parsedPersonName.isEmpty()) {
@@ -422,7 +435,7 @@ DuplicateScanResult DuplicateFinder::scan(const QStringList& directories) {
             bool isDupe = false;
             if (fileData[i].isImage && fileData[j].isImage) {
                 uint64_t v = fileData[i].pHash ^ fileData[j].pHash;
-                int dist = std::bitset<64>(v).count();
+                int dist = qPopulationCount(v);
                 if (dist <= 4) { // <= 4 bits difference means ~93%+ visually similar (drastically reduces false positives)
                     // 2. Fast in-memory pixel-level visual similarity check
                     QImage imgA = getLowResImg(fileData[i]);
@@ -475,8 +488,8 @@ DuplicateScanResult DuplicateFinder::scan(const QStringList& directories) {
                 }
 
                 // Secondary sort: Resolution (total pixels) descending
-                long pixelsA = a.dimensions.isValid() ? (long)a.dimensions.width() * a.dimensions.height() : 0;
-                long pixelsB = b.dimensions.isValid() ? (long)b.dimensions.width() * b.dimensions.height() : 0;
+                qint64 pixelsA = a.dimensions.isValid() ? static_cast<qint64>(a.dimensions.width()) * a.dimensions.height() : 0;
+                qint64 pixelsB = b.dimensions.isValid() ? static_cast<qint64>(b.dimensions.width()) * b.dimensions.height() : 0;
                 if (pixelsA != pixelsB) {
                     return pixelsA > pixelsB;
                 }
@@ -515,7 +528,9 @@ DuplicateScanResult DuplicateFinder::scan(const QStringList& directories) {
 }
 
 bool DuplicateFinder::deleteFile(const DuplicateGroup& group, int fileIndex) {
-    if (fileIndex < 0 || fileIndex >= group.files.size()) return false;
+    if (fileIndex < 0 || fileIndex >= group.files.size()) {
+        return false;
+    }
 
     const auto& file = group.files[fileIndex];
     if (QFile::exists(file.filePath)) {
@@ -533,7 +548,7 @@ QHash<QString, QList<QString>> DuplicateFinder::groupFilesBySizeAndName(
     emit scanProgress(0, 0); // Initialize UI state
 
     for (const QString& dirPath : directories) {
-        qDebug() << "DuplicateFinder: Scanning directory:" << dirPath;
+        LogManager::instance()->info(QString("DuplicateFinder: Scanning directory: %1").arg(dirPath));
         QDirIterator it(dirPath, QDir::Files | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
         while (it.hasNext()) {
             it.next();
@@ -542,10 +557,12 @@ QHash<QString, QList<QString>> DuplicateFinder::groupFilesBySizeAndName(
 
             if (totalFiles == 1 || totalFiles % 25 == 0) {
                 emit scanProgress(totalFiles, 0); // 0 indicates indeterminate total
-                qDebug() << "DuplicateFinder: Found" << totalFiles << "files so far...";
+                LogManager::instance()->info(QString("DuplicateFinder: Found %1 files so far...").arg(totalFiles));
             }
 
-            if (entry.size() <= 0) continue; // Skip empty/corrupted files
+            if (entry.size() <= 0) {
+                continue; // Skip empty/corrupted files
+            }
             // Group purely by file size (to the byte) to guarantee we catch duplicate copies
             // even if they have different names or are sorted under different people.
             QString key = QString::number(entry.size());

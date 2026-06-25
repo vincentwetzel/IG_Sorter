@@ -179,6 +179,8 @@ collects and posts photos of people other than the account holder.
   `pnv.male_modelnetwork` (curator). This is fully supported.
 - The old `photographers.txt` list is **migrated into this database** as entries
   with `"type": "curator"`. The text file is no longer used.
+- Account lookups should stay case-insensitive, and the in-memory account index
+  should be updated incrementally when entries are added, removed, or renamed.
 
 #### 2.2.3 Class Interface
 
@@ -621,10 +623,14 @@ Unknown account?  Name: [Taylor Farr________]  Type: [Personal ▼]  [Add]
       posts content featuring the named person.
     - `IRL Only` — no account; name-only entry (rarely chosen here; mostly for
       cleanup of existing output directories).
-  - Clicking **Add** calls `DatabaseManager::addEntry()` with the selected type
+- Clicking **Add** calls `DatabaseManager::addEntry()` with the selected type
     and immediately resolves the name for the current batch.
 - Once the account is known, the header updates to show the resolved IRL name
   and the unknown-account UI elements disappear.
+- The screen should skip empty groups automatically and treat invalid batch-size
+  values as `1` or the configured minimum before computing sub-batches.
+- All group/index access must guard against out-of-range values when the user
+  reaches the end of the queue or when an empty source scan returns early.
 
 ---
 

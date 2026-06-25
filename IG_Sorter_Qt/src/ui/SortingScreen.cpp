@@ -5,6 +5,7 @@
 #include "core/DatabaseManager.h"
 #include "core/SorterEngine.h"
 #include "utils/ConfigManager.h"
+#include "utils/LogManager.h"
 #include <QLocale>
 #include <algorithm>
 #include <QVBoxLayout>
@@ -89,6 +90,7 @@ SortingScreen::SortingScreen(QWidget* parent)
 }
 
 void SortingScreen::setGroups(const QList<FileGroup>& groups) {
+    LogManager::instance()->info(QString("SortingScreen::setGroups called with %1 groups").arg(groups.size()));
     m_groups = groups;
     m_currentGroup = 0;
     m_currentSubBatch = 0;
@@ -98,13 +100,23 @@ void SortingScreen::setGroups(const QList<FileGroup>& groups) {
     m_errorMessages.clear();
     m_newAccountsAdded.clear();
     m_filesByAccountType.clear();
+    m_currentSourceType.clear();
+    m_nameCounts.clear();
 
-    if (!groups.isEmpty()) {
-        loadNextBatch();
-    } else {
-        m_headerLabel->setText("No files found in source directory.");
-        m_finishButton->setEnabled(true);
+    if (!m_groups.isEmpty()) {
+        while (m_currentGroup < m_groups.size() && m_groups[m_currentGroup].filePaths.isEmpty()) {
+            LogManager::instance()->info(QString("SortingScreen::setGroups skipping empty group %1").arg(m_currentGroup));
+            ++m_currentGroup;
+        }
+
+        if (m_currentGroup < m_groups.size()) {
+            loadNextBatch();
+            return;
+        }
     }
+
+    m_headerLabel->setText("No files found in source directory.");
+    m_finishButton->setEnabled(true);
 }
 
 void SortingScreen::setOutputFolders(const QVector<OutputFolderConfig>& folders) {
@@ -122,61 +134,68 @@ void SortingScreen::setEngine(SorterEngine* engine) {
 }
 
 void SortingScreen::loadNextBatch() {
-    if (m_currentGroup >= m_groups.size()) {
-        m_finishButton->setEnabled(true);
-        m_headerLabel->setText("All batches complete!");
-        m_previewGrid->clear();
-        m_sortPanel->clearSelections();
-        emit allBatchesDone();
-        return;
+    LogManager::instance()->info(QString("SortingScreen::loadNextBatch start: currentGroup=%1, currentSubBatch=%2, groupCount=%3")
+        .arg(m_currentGroup).arg(m_currentSubBatch).arg(m_groups.size()));
+
+    if (m_currentGroup < 0) {
+        LogManager::instance()->warning(QString("SortingScreen::loadNextBatch corrected negative currentGroup %1 to 0").arg(m_currentGroup));
+        m_currentGroup = 0;
     }
-
-    const FileGroup& group = m_groups[m_currentGroup];
-    int batchSize = ConfigManager::instance()->batchSize();
-
-    // Detect source type change — reset leaderboard when switching sources
-    QString newSource = group.accountHandle;
-    bool showFavorites = (group.accountType == AccountType::IrlOnly) ||
-                         (!group.isKnown && group.accountType == AccountType::Personal);
-    if (showFavorites && newSource != m_currentSourceType) {
-        m_currentSourceType = newSource;
-        m_nameCounts.clear();
-        m_sortPanel->setQuickFillNames(QStringList());
-    } else if (!showFavorites) {
-        // Known personal or curator — hide favorites entirely
-        m_currentSourceType.clear();
-        m_nameCounts.clear();
-        m_sortPanel->setQuickFillNames(QStringList());
-    }
-
-    // Calculate sub-batch boundaries
-    int startIdx = m_currentSubBatch * batchSize;
-    int endIdx = qMin(startIdx + batchSize, group.filePaths.size());
-
-    if (startIdx >= group.filePaths.size()) {
-        m_currentGroup++;
+    if (m_currentSubBatch < 0) {
+        LogManager::instance()->warning(QString("SortingScreen::loadNextBatch corrected negative currentSubBatch %1 to 0").arg(m_currentSubBatch));
         m_currentSubBatch = 0;
-        loadNextBatch();
+    }
+
+    const int batchSize = qMax(1, ConfigManager::instance()->batchSize());
+
+    while (m_currentGroup < m_groups.size()) {
+        const FileGroup& group = m_groups[m_currentGroup];
+        int groupSize = group.filePaths.size();
+        LogManager::instance()->info(QString("SortingScreen::loadNextBatch evaluating group %1 with %2 file(s)")
+            .arg(m_currentGroup).arg(groupSize));
+
+        int startIdx = m_currentSubBatch * batchSize;
+        if (startIdx >= groupSize) {
+            LogManager::instance()->info(QString("SortingScreen::loadNextBatch group %1 exhausted, advancing to next group").arg(m_currentGroup));
+            ++m_currentGroup;
+            m_currentSubBatch = 0;
+            continue;
+        }
+
+        int endIdx = qMin(startIdx + batchSize, groupSize);
+        LogManager::instance()->info(QString("SortingScreen::loadNextBatch loading batch %1..%2 for group %3")
+            .arg(startIdx).arg(endIdx - 1).arg(m_currentGroup));
+
+        QStringList batchFiles;
+        batchFiles.reserve(endIdx - startIdx);
+        for (int i = startIdx; i < endIdx; ++i) {
+            batchFiles.append(group.filePaths[i]);
+        }
+
+        m_previewGrid->setImages(batchFiles);
+        m_sortPanel->setAccountInfo(group.accountHandle, group.irlName,
+                                    group.isKnown, group.accountType);
+        // Only clear name input for unknown accounts — known accounts should have name pre-filled
+        if (!group.isKnown || group.irlName.isEmpty()) {
+            m_sortPanel->clearNameInput();
+        }
+
+        updateHeader();
         return;
     }
 
-    QStringList batchFiles;
-    for (int i = startIdx; i < endIdx; ++i) {
-        batchFiles.append(group.filePaths[i]);
-    }
-
-    m_previewGrid->setImages(batchFiles);
-    m_sortPanel->setAccountInfo(group.accountHandle, group.irlName,
-                                group.isKnown, group.accountType);
-    // Only clear name input for unknown accounts — known accounts should have name pre-filled
-    if (!group.isKnown || group.irlName.isEmpty()) {
-        m_sortPanel->clearNameInput();
-    }
-
-    updateHeader();
+    m_finishButton->setEnabled(true);
+    m_headerLabel->setText("All batches complete!");
+    m_previewGrid->clear();
+    m_sortPanel->clearSelections();
+    emit allBatchesDone();
 }
 
 void SortingScreen::handleSortToFolder(int folderIndex) {
+    if (m_currentGroup >= m_groups.size()) {
+        return;
+    }
+
     QStringList selected = m_previewGrid->selectedFilePaths();
     if (selected.isEmpty()) {
         QMessageBox::information(this, "No Selection",
@@ -470,9 +489,10 @@ void SortingScreen::handleSortToFolder(int folderIndex) {
 void SortingScreen::handleSkip() {
     // Skip means "don't sort these, move to next batch"
     int visibleCount = 0;
-    if (m_currentGroup < m_groups.size()) {
+    if (m_currentGroup >= 0 && m_currentGroup < m_groups.size()) {
         const FileGroup& group = m_groups[m_currentGroup];
         int batchSize = ConfigManager::instance()->batchSize();
+        if (batchSize <= 0) batchSize = 5;
         int startIdx = m_currentSubBatch * batchSize;
         int endIdx = qMin(startIdx + batchSize, group.filePaths.size());
         visibleCount = endIdx - startIdx;
@@ -507,15 +527,6 @@ void SortingScreen::handleDeleteSelected() {
         return;
     }
 
-    int count = selected.size();
-    int ret = QMessageBox::question(this, "Delete Files",
-        QString("Move %1 selected file%2 to the Recycle Bin?")
-            .arg(count).arg(count > 1 ? "s" : ""),
-        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
-
-    if (ret != QMessageBox::Yes) {
-        return;
-    }
 
     int deletedCount = 0;
     int failedCount = 0;
@@ -533,14 +544,9 @@ void SortingScreen::handleDeleteSelected() {
     // Remove deleted thumbnails from grid
     m_previewGrid->removeSelected();
 
-    // Report results
-    QString msg;
-    if (failedCount == 0) {
-        msg = QString("%1 file%2 moved to Recycle Bin.")
-                  .arg(deletedCount).arg(deletedCount > 1 ? "s" : "");
-        QMessageBox::information(this, "Deleted", msg);
-    } else {
-        msg = QString("%1 file%2 moved to Recycle Bin.\n%3 failed.")
+    // Report errors if any
+    if (failedCount > 0) {
+        QString msg = QString("%1 file%2 moved to Recycle Bin.\n%3 failed.")
                   .arg(deletedCount).arg(deletedCount > 1 ? "s" : "").arg(failedCount);
         QMessageBox::warning(this, "Partial Delete", msg);
     }
@@ -756,7 +762,7 @@ void SortingScreen::handleOpenInstagram(const QString& account) {
 }
 
 void SortingScreen::handleCuratorResolvedName(const QString& irlNameParam) {
-    if (m_currentGroup >= m_groups.size()) return;
+    if (m_currentGroup < 0 || m_currentGroup >= m_groups.size()) return;
 
     FileGroup& group = m_groups[m_currentGroup];
     QString irlName = irlNameParam;
@@ -856,9 +862,10 @@ void SortingScreen::handleCuratorResolvedName(const QString& irlNameParam) {
 }
 
 void SortingScreen::updateHeader() {
-    if (m_currentGroup >= m_groups.size()) return;
+    if (m_currentGroup < 0 || m_currentGroup >= m_groups.size()) return;
 
     int batchSize = ConfigManager::instance()->batchSize();
+    if (batchSize <= 0) batchSize = 5;
 
     // Calculate global sub-batch index and total across ALL groups
     int globalBatchIndex = 0;
@@ -927,7 +934,7 @@ void SortingScreen::updateFavoriteButtons() {
 }
 
 QString SortingScreen::getCurrentSourceType() const {
-    if (m_currentGroup < m_groups.size()) {
+    if (m_currentGroup >= 0 && m_currentGroup < m_groups.size()) {
         const FileGroup& group = m_groups[m_currentGroup];
         return group.accountHandle;
     }
@@ -940,8 +947,8 @@ void SortingScreen::updateGroupsForNewAccount(const QString& accountHandle) {
     // Look up the account in the database
     if (!m_db->hasAccount(accountHandle)) return;
 
-    QString irlName = m_db->getIrlName(accountHandle);
-    AccountType type = m_db->getEntry(accountHandle).type;
+    QString irlName = m_db->getIrlName(accountHandle.toLower());
+    AccountType type = m_db->getEntry(accountHandle.toLower()).type;
 
     // Update all matching groups
     bool currentGroupUpdated = false;
@@ -964,7 +971,7 @@ void SortingScreen::updateGroupsForNewAccount(const QString& accountHandle) {
     }
 
     // Update the current group's UI if it was affected
-    if (currentGroupUpdated) {
+    if (currentGroupUpdated && m_currentGroup < m_groups.size()) {
         // For Curator and IrlOnly, pass current model name so text field isn't cleared
         QString displayName = (type == AccountType::Curator || type == AccountType::IrlOnly)
                                   ? m_groups[m_currentGroup].irlName

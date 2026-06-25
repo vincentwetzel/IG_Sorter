@@ -212,16 +212,66 @@ void MainWindow::showCleanUpAccountsScreen() {
 
 void MainWindow::cancelGrouping() {
     if (m_groupWatcher) {
-        m_groupWatcher->cancel();
-        m_groupWatcher->deleteLater();
-        m_groupWatcher = nullptr;
+        auto* watcher = m_groupWatcher;
+        m_groupWatcher = nullptr; // Clear before waiting so the finished lambda aborts safely
+        watcher->disconnect(); // Prevent finished lambda from executing during event loop spin
+        if (!watcher->isFinished()) {
+            watcher->waitForFinished(); // Wait only if it's actually still running/queued
+        }
+        watcher->deleteLater();
         m_statusBar->showMessage("Grouping cancelled.");
+    }
+
+    // Safely wait for and clean up any dangling cleanup watchers before engine deletion
+    auto cleanupWatchers = this->findChildren<QObject*>("cleanupWatcher");
+    for (auto* obj : cleanupWatchers) {
+        auto* w = static_cast<QFutureWatcher<CleanupReport>*>(obj);
+        w->disconnect(); // Prevent finished lambda from executing during event loop spin
+        if (!w->isFinished()) {
+            w->waitForFinished(); // Wait only if it's actually still running/queued
+        }
+        w->deleteLater();
+        obj->setObjectName(""); // prevent finding it again
     }
 }
 
 void MainWindow::showSortingScreen() {
     // Cancel any previous grouping that might still be running
     cancelGrouping();
+
+    // Reload and recreate database & engine to resolve stale indices and map out-of-range crashes
+    QString dbPath = ConfigManager::instance()->databaseFile();
+    QFileInfo dbReloadInfo(dbPath);
+    if (!dbPath.isEmpty() && !dbReloadInfo.isAbsolute()) {
+        QString appDir = QCoreApplication::applicationDirPath();
+        QString candidate = QDir(appDir).filePath(dbPath);
+        if (!QFile::exists(candidate)) {
+            candidate = QDir(appDir).filePath("../" + dbPath);
+            if (!QFile::exists(candidate)) {
+                candidate.clear();
+            }
+        }
+        if (!candidate.isEmpty()) {
+            dbPath = QFileInfo(candidate).absoluteFilePath();
+        }
+    }
+
+    delete m_engine;
+    delete m_db;
+    m_db = new DatabaseManager(dbPath, this);
+    m_db->load();
+    m_engine = new SorterEngine(m_db, this);
+    m_cleanUpAccountsScreen->setDatabaseManager(m_db);
+    m_sortingScreen->setDatabaseManager(m_db);
+    m_sortingScreen->setEngine(m_engine);
+
+    QString sourceDir = ConfigManager::instance()->sourceFolder();
+    auto outputFolders = ConfigManager::instance()->outputFolders();
+    QStringList outputDirPaths;
+    for (const auto& folder : outputFolders) {
+        outputDirPaths.append(folder.path);
+    }
+    m_engine->initialize(sourceDir, outputDirPaths);
 
     // Run file grouping asynchronously to avoid blocking the UI
     m_statusBar->showMessage("Scanning and grouping files...");
@@ -231,22 +281,27 @@ void MainWindow::showSortingScreen() {
     showCleanupScreen();  // keep showing cleanup screen while grouping
 
     m_groupWatcher = new QFutureWatcher<QList<FileGroup>>();
+    QFutureWatcher<QList<FileGroup>>* watcher = m_groupWatcher;
 
-    connect(m_groupWatcher, &QFutureWatcher<QList<FileGroup>>::finished,
-            this, [this]() {
-                if (!m_groupWatcher) return;  // was cancelled
+    connect(watcher, &QFutureWatcher<QList<FileGroup>>::finished,
+            this, [this, watcher]() {
+                if (m_groupWatcher != watcher) return;  // was cancelled
 
-                QList<FileGroup> groups = m_groupWatcher->result();
-                m_groupWatcher->deleteLater();
-                m_groupWatcher = nullptr;
+                QList<FileGroup> groups = watcher->result();
+                watcher->deleteLater();
+                if (m_groupWatcher == watcher) m_groupWatcher = nullptr;
 
                 // Load output folders into the sort panel
+                LogManager::instance()->info(QString("SortingScreen init: groups=%1, outputFolders=%2")
+                    .arg(groups.size())
+                    .arg(ConfigManager::instance()->outputFolders().size()));
                 m_sortingScreen->setOutputFolders(ConfigManager::instance()->outputFolders());
+                LogManager::instance()->info("SortingScreen init: setOutputFolders complete");
                 m_sortingScreen->setGroups(groups);
-                m_sortingScreen->setDatabaseManager(m_db);
-                m_sortingScreen->setEngine(m_engine);
+                LogManager::instance()->info("SortingScreen init: setGroups complete");
 
                 m_stackedWidget->setCurrentWidget(m_sortingScreen);
+                LogManager::instance()->info("SortingScreen init: setCurrentWidget complete");
                 m_statusBar->showMessage(QString("Sorting: %1 groups found").arg(groups.size()));
             });
 
@@ -339,12 +394,22 @@ void MainWindow::startSortingPipeline() {
             dbPath = QFileInfo(candidate).absoluteFilePath();
         }
     }
-    int entriesBefore = m_db->allEntries().size();
-    if (!dbPath.isEmpty() && QFile::exists(dbPath)) {
-        bool reloaded = m_db->load();
-        LogManager::instance()->info(
-            QString("DB reload: %1, entries before=%2 after=%3")
-                .arg(reloaded).arg(entriesBefore).arg(m_db->allEntries().size()));
+
+    // Re-create the Database and Engine to prevent stale internal maps and index out of range crashes
+    delete m_engine;
+    delete m_db;
+    m_db = new DatabaseManager(dbPath, this);
+    m_db->load();
+    m_engine = new SorterEngine(m_db, this);
+    m_cleanUpAccountsScreen->setDatabaseManager(m_db);
+    m_sortingScreen->setDatabaseManager(m_db);
+    m_sortingScreen->setEngine(m_engine);
+
+    // Initialize engine
+    if (!m_engine->initialize(sourceDir, outputDirPaths)) {
+        QMessageBox::critical(this, "Initialization Error",
+            "Failed to initialize the sorting engine. Check your configuration.");
+        return;
     }
 
     // Validate database is loaded before proceeding
@@ -377,6 +442,7 @@ void MainWindow::startSortingPipeline() {
     // Run cleanup via the engine (async, with progress signals)
     QFutureWatcher<CleanupReport>* cleanupWatcher =
         new QFutureWatcher<CleanupReport>(this);
+    cleanupWatcher->setObjectName("cleanupWatcher");
 
     connect(cleanupWatcher, &QFutureWatcher<CleanupReport>::finished,
             this, [this, cleanupWatcher]() {

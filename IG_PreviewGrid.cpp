@@ -7,7 +7,6 @@
 
 #include "ui/ImageThumbnail.h"
 #include "ui/ThumbnailWithLabel.h"
-#include "utils/LogManager.h"
 
 ImagePreviewGrid::ImagePreviewGrid(QWidget* parent)
     : QWidget(parent), m_gridLayout(new QGridLayout(this)) {
@@ -17,7 +16,6 @@ ImagePreviewGrid::ImagePreviewGrid(QWidget* parent)
 }
 
 void ImagePreviewGrid::setImages(const QStringList& filePaths) {
-    LogManager::instance()->info(QString("ImagePreviewGrid::setImages start with %1 file(s)").arg(filePaths.size()));
     clear();
 
     m_items.reserve(filePaths.size());
@@ -36,17 +34,12 @@ void ImagePreviewGrid::setImages(const QStringList& filePaths) {
         });
     }
 
-    LogManager::instance()->info("ImagePreviewGrid::setImages created thumbnails, calling rebuildGrid");
     rebuildGrid();
     setFocus();  // Set focus to grid so DELETE key works immediately
-    LogManager::instance()->info("ImagePreviewGrid::setImages complete");
 }
 
 void ImagePreviewGrid::rebuildGrid() {
-    LogManager::instance()->info(QString("ImagePreviewGrid::rebuildGrid start with %1 item(s), m_cols=%2")
-        .arg(m_items.size()).arg(m_cols));
     if (m_items.isEmpty()) {
-        LogManager::instance()->info("ImagePreviewGrid::rebuildGrid no items, returning");
         return;
     }
 
@@ -54,12 +47,6 @@ void ImagePreviewGrid::rebuildGrid() {
                              - m_gridLayout->contentsMargins().right();
     const int availableHeight = height() - m_gridLayout->contentsMargins().top()
                               - m_gridLayout->contentsMargins().bottom();
-
-    if (availableWidth <= 0 || availableHeight <= 0) {
-        LogManager::instance()->warning(QString("ImagePreviewGrid::rebuildGrid invalid available size %1x%2, returning")
-            .arg(availableWidth).arg(availableHeight));
-        return;
-    }
 
     // Compute the average aspect ratio (width/height) across all images
     double avgAspect = 0.75;  // default portrait-ish
@@ -86,17 +73,15 @@ void ImagePreviewGrid::rebuildGrid() {
     constexpr int desiredThumbWidth = 300;
     int cols = qMax(1, availableWidth / desiredThumbWidth);
     cols = qMin(cols, m_items.size());
-    if (cols <= 0) {
-        cols = 1;
-    }
 
-    const int spacing = m_gridLayout->horizontalSpacing();
-    const int cellWidth = qMax(1, (availableWidth - (cols - 1) * spacing) / cols);
+    const int cellWidth = (availableWidth - (cols - 1) * m_gridLayout->horizontalSpacing()) / cols;
+    // Height is derived from cell width and average aspect ratio
     int cellHeight = qMax(80, static_cast<int>(cellWidth / avgAspect));
 
-    const int rows = qMax(1, (m_items.size() + cols - 1) / cols);
+    // If the total height needed exceeds available, scale down
+    const int rows = (m_items.size() + cols - 1) / cols;
     const int totalNeededHeight = rows * cellHeight + (rows - 1) * m_gridLayout->verticalSpacing();
-    if (totalNeededHeight > availableHeight) {
+    if (totalNeededHeight > availableHeight && availableHeight > 0) {
         const double scale = static_cast<double>(availableHeight) / totalNeededHeight;
         cellHeight = qMax(80, static_cast<int>(cellHeight * scale));
     }
@@ -106,12 +91,35 @@ void ImagePreviewGrid::rebuildGrid() {
     m_cols = cols;
 
     if (colsChanged) {
-        LogManager::instance()->info("ImagePreviewGrid::rebuildGrid cols changed, clearing layout");
+        // Clear existing grid items
         for (int i = m_items.size() - 1; i >= 0; --i) {
             m_gridLayout->removeWidget(m_items[i]);
         }
+
+        // Reset all row/column properties
+        for (int c = 0; c < m_gridLayout->columnCount(); ++c) {
+            m_gridLayout->setColumnStretch(c, 0);
+            m_gridLayout->setColumnMinimumWidth(c, 0);
+        }
+        for (int r = 0; r < m_gridLayout->rowCount(); ++r) {
+            m_gridLayout->setRowStretch(r, 0);
+            m_gridLayout->setRowMinimumHeight(r, 0);
+        }
     }
 
+    // Apply minimum sizes
+    for (int r = 0; r < rows; ++r) {
+        if (m_gridLayout->rowMinimumHeight(r) != cellHeight) {
+            m_gridLayout->setRowMinimumHeight(r, cellHeight);
+        }
+    }
+    for (int c = 0; c < cols; ++c) {
+        if (m_gridLayout->columnMinimumWidth(c) != cellWidth) {
+            m_gridLayout->setColumnMinimumWidth(c, cellWidth);
+        }
+    }
+
+    // Add items back and notify of cell size
     for (int i = 0; i < m_items.size(); ++i) {
         int row = i / m_cols;
         int col = i % m_cols;
@@ -120,7 +128,6 @@ void ImagePreviewGrid::rebuildGrid() {
         }
         m_items[i]->thumbnail()->setCellSize(cellSize);
     }
-    LogManager::instance()->info("ImagePreviewGrid::rebuildGrid complete");
 }
 
 void ImagePreviewGrid::resizeEvent(QResizeEvent* event) {

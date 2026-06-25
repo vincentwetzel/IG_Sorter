@@ -23,7 +23,7 @@ The **IG_Sorter** project is a Qt 6 C++ desktop application (`IG_Sorter_Qt/`). I
 
 - **`FileNameParser`**: Regex-based filename parsing supporting Instaloader-style downloads, Facebook downloads (`FB_IMG_<unix_ms>`), TikTok slideshows, and unknown/unmatched files.
 - **`FileGrouper`**: Groups files by account handle and post timestamp, resolves IRL names via database lookup, and emits progress signals.
-- **`DatabaseManager`**: JSON-based account database with CRUD operations, IRL name lookup, and case-insensitive account matching.
+- **`DatabaseManager`**: JSON-based account database with CRUD operations, IRL name lookup, case-insensitive account matching, and incremental index maintenance for fast updates.
 - **`DirectoryCleanup`**: Safe two-phase rename to fix numbering gaps in output directories, with unknown name detection.
 - **`SorterEngine`**: Orchestrates the full pipeline: extension fixing -> cleanup -> grouping -> sorting.
 - **`ExtensionFixer`**: Detects and corrects mismatched file extensions using magic byte inspection.
@@ -35,14 +35,14 @@ The **IG_Sorter** project is a Qt 6 C++ desktop application (`IG_Sorter_Qt/`). I
 - **`MainWindow`**: Manages the screen stack: Menu -> Cleanup -> Sorting -> Report, plus account cleanup and duplicate finder screens.
 - **`MenuScreen`**: Startup screen with source folder link and Start Sorting, Clean Up Accounts, Find Duplicates, and Settings buttons.
 - **`CleanupScreen`**: Progress bars per output directory and unknown name resolution.
-- **`SortingScreen`**: Main batch-sorting UI with preview grid, sort panel, sub-batch management, and progress header.
+- **`SortingScreen`**: Main batch-sorting UI with preview grid, sort panel, sub-batch management, progress header, empty-group skipping, and defensive bounds handling.
 - **`SortPanel`**: Output folder buttons, selection controls, unknown account input, autocomplete, and favorites quick-fill buttons.
 - **`ImagePreviewGrid`**: Aspect-ratio-aware grid of selectable thumbnails with filename labels and pixel dimensions.
 - **`ThumbnailWithLabel`**: Combines thumbnail, pixel dimensions label, and clickable filename hyperlink.
 - **`ImageThumbnail`**: Single selectable thumbnail widget with WebP decoder fallback.
 - **`AddPersonDialog`**: Modal dialog prompting for IRL name and optional Instagram account.
 - **`ReportScreen`**: Summary of sorting results, errors, and directory file counts.
-- **`DuplicateFinderScreen`**: Finds and removes duplicate files across output directories, with live scan progress, cancellation, streaming group discovery, image previews, undo support, and responsive label sizing for long filenames.
+- **`DuplicateFinderScreen`**: Finds and removes duplicate files across output directories, with live scan progress, cancellation, streaming group discovery, image previews, undo support, responsive label sizing for long filenames, and cached grayscale similarity checks layered on top of perceptual hashes.
 - **`SettingsDialog`**: Configuration for source folder, output folders, database path, batch size, and theme.
 
 ### Utilities

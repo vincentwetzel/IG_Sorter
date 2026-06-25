@@ -57,7 +57,7 @@ void ResolutionRow::apply() {
 
     // Check for duplicate account
     if (!account.isEmpty() && m_db->hasAccount(account)) {
-        QString existingName = m_db->getIrlName(account);
+        QString existingName = m_db->getIrlName(account.toLower());
         LogManager::instance()->warning(
             QString("Account \"%1\" already exists in DB, associated with \"%2\"")
                 .arg(account, existingName));
@@ -151,24 +151,36 @@ CleanupScreen::CleanupScreen(QWidget* parent)
 
     connect(m_menuButton, &QPushButton::clicked,
             this, &CleanupScreen::menuClicked);
-    connect(m_continueButton, &QPushButton::clicked,
-            this, &CleanupScreen::continueClicked);
+    connect(m_continueButton, &QPushButton::clicked, this, [this]() {
+        m_continueButton->setEnabled(false);
+        emit continueClicked();
+    });
 }
 
 void CleanupScreen::setDirectories(const QStringList& dirs) {
     // Remove existing progress bars, labels, and path labels
     for (auto* bar : m_progressBars) {
-        delete bar;
+        bar->deleteLater();
     }
     for (auto* label : m_progressLabels) {
-        delete label;
+        label->deleteLater();
     }
     for (auto* label : m_pathLabels) {
-        delete label;
+        label->deleteLater();
     }
     m_progressBars.clear();
     m_progressLabels.clear();
     m_pathLabels.clear();
+
+    // Clear any hidden resolution rows to ensure no dangling pointers to old DB instances remain
+    QLayoutItem* child;
+    while ((child = m_resolutionLayout->takeAt(0)) != nullptr) {
+        if (child->widget()) {
+            child->widget()->deleteLater();
+        }
+        delete child;
+    }
+    m_resolutionRows.clear();
 
     for (const auto& dir : dirs) {
         auto* pathLabel = new QLabel(dir, this);
@@ -232,7 +244,7 @@ void CleanupScreen::showUnresolvedIssues(const QStringList& unknownNames, Databa
     QLayoutItem* child;
     while ((child = m_resolutionLayout->takeAt(0)) != nullptr) {
         if (child->widget()) {
-            delete child->widget();
+            child->widget()->deleteLater();
         }
         delete child;
     }

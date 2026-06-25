@@ -1,10 +1,12 @@
 #include "core/DatabaseManager.h"
-#include "utils/LogManager.h"
+
 #include <QFile>
-#include <QJsonDocument>
-#include <QJsonArray>
-#include <QJsonObject>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+
+#include "utils/LogManager.h"
 
 DatabaseManager::DatabaseManager(const QString& dbPath, QObject* parent)
     : QObject(parent), m_dbPath(dbPath) {}
@@ -27,21 +29,24 @@ bool DatabaseManager::load() {
         return false;
     }
 
+    QJsonArray arr = doc.array();
+
     m_entries.clear();
     m_accountIndex.clear();
+    m_entries.reserve(arr.size());
+    m_accountIndex.reserve(arr.size());
 
-    QJsonArray arr = doc.array();
     for (int i = 0; i < arr.size(); ++i) {
         QJsonObject obj = arr[i].toObject();
 
         PersonEntry entry;
-        entry.irlName = obj.value("name").toString();
+        entry.irlName = obj.value(QStringLiteral("name")).toString();
 
-        if (obj.contains("account") && !obj.value("account").isNull()) {
-            entry.account = obj.value("account").toString().toLower();
+        if (obj.contains(QStringLiteral("account")) && !obj.value(QStringLiteral("account")).isNull()) {
+            entry.account = obj.value(QStringLiteral("account")).toString().toLower();
         }
 
-        QString typeStr = obj.value("type").toString();
+        QString typeStr = obj.value(QStringLiteral("type")).toString();
         entry.type = stringToAccountType(typeStr);
 
         if (!entry.account.isEmpty()) {
@@ -60,15 +65,15 @@ bool DatabaseManager::save() {
 
     for (const auto& entry : m_entries) {
         QJsonObject obj;
-        obj["name"] = entry.irlName;
+        obj[QStringLiteral("name")] = entry.irlName;
 
         if (entry.type == AccountType::IrlOnly) {
-            obj["account"] = QJsonValue::Null;
+            obj[QStringLiteral("account")] = QJsonValue::Null;
         } else {
-            obj["account"] = entry.account;
+            obj[QStringLiteral("account")] = entry.account;
         }
 
-        obj["type"] = accountTypeToString(entry.type);
+        obj[QStringLiteral("type")] = accountTypeToString(entry.type);
         arr.append(obj);
     }
 
@@ -97,17 +102,27 @@ bool DatabaseManager::hasAccount(const QString& handle) const {
 }
 
 QString DatabaseManager::getIrlName(const QString& handle) const {
-    QString key = handle.toLower();
-    if (m_accountIndex.contains(key)) {
-        return m_entries[m_accountIndex.value(key)].irlName;
+    const QString key = handle.toLower();
+    auto it = m_accountIndex.find(key);
+    if (it != m_accountIndex.end()) {
+        int idx = it.value();
+        if (idx >= 0 && idx < m_entries.size()) {
+            return m_entries[idx].irlName;
+        }
+        LogManager::instance()->error(QString("DB Index out of bounds: %1 for handle %2").arg(idx).arg(key));
     }
     return QString();
 }
 
 PersonEntry DatabaseManager::getEntry(const QString& handle) const {
-    QString key = handle.toLower();
-    if (m_accountIndex.contains(key)) {
-        return m_entries[m_accountIndex.value(key)];
+    const QString key = handle.toLower();
+    auto it = m_accountIndex.find(key);
+    if (it != m_accountIndex.end()) {
+        int idx = it.value();
+        if (idx >= 0 && idx < m_entries.size()) {
+            return m_entries[idx];
+        }
+        LogManager::instance()->error(QString("DB Index out of bounds: %1 for handle %2").arg(idx).arg(key));
     }
     return PersonEntry();
 }
@@ -117,13 +132,14 @@ QList<PersonEntry> DatabaseManager::allEntries() const {
 }
 
 bool DatabaseManager::addEntry(const QString& account, const QString& irlName, AccountType type) {
+    const QString lowerAccount = account.toLower();
     // Don't add duplicate accounts
-    if (!account.isEmpty() && hasAccount(account)) {
+    if (!lowerAccount.isEmpty() && m_accountIndex.contains(lowerAccount)) {
         return false;
     }
 
     PersonEntry entry;
-    entry.account = account.isEmpty() ? QString() : account.toLower();
+    entry.account = lowerAccount.isEmpty() ? QString() : lowerAccount;
     entry.irlName = irlName;
     entry.type = type;
 
@@ -137,20 +153,20 @@ bool DatabaseManager::addEntry(const QString& account, const QString& irlName, A
 }
 
 bool DatabaseManager::removeEntry(const QString& account) {
-    QString key = account.toLower();
-    if (!m_accountIndex.contains(key)) {
+    const QString key = account.toLower();
+    auto it = m_accountIndex.find(key);
+    if (it == m_accountIndex.end()) {
         return false;
     }
 
-    int index = m_accountIndex.value(key);
-    m_accountIndex.remove(key);
+    int index = it.value();
+    m_accountIndex.erase(it);
     m_entries.removeAt(index);
 
-    // Rebuild index
-    m_accountIndex.clear();
-    for (int i = 0; i < m_entries.size(); ++i) {
-        if (!m_entries[i].account.isEmpty()) {
-            m_accountIndex[m_entries[i].account] = i;
+    // Adjust indices of shifted entries in the index map instead of rebuilding
+    for (auto mapIt = m_accountIndex.begin(); mapIt != m_accountIndex.end(); ++mapIt) {
+        if (mapIt.value() > index) {
+            mapIt.value()--;
         }
     }
 
@@ -160,14 +176,15 @@ bool DatabaseManager::removeEntry(const QString& account) {
 
 bool DatabaseManager::updateEntry(const QString& oldAccount, const QString& newAccount,
                                   const QString& newName, AccountType newType) {
-    QString key = oldAccount.toLower();
-    if (!m_accountIndex.contains(key)) {
+    const QString key = oldAccount.toLower();
+    auto it = m_accountIndex.find(key);
+    if (it == m_accountIndex.end()) {
         LogManager::instance()->warning(
             QString("updateEntry: account '%1' not found in index").arg(oldAccount));
         return false;
     }
 
-    int index = m_accountIndex.value(key);
+    int index = it.value();
     return updateEntryByIndex(index, newAccount, newName, newType);
 }
 
@@ -180,7 +197,8 @@ bool DatabaseManager::updateEntryByIndex(int index, const QString& newAccount,
     }
 
     QString oldAccount = m_entries[index].account;
-    m_entries[index].account = newAccount.isEmpty() ? QString() : newAccount.toLower();
+    QString newAccountLower = newAccount.isEmpty() ? QString() : newAccount.toLower();
+    m_entries[index].account = newAccountLower;
     m_entries[index].irlName = newName;
     m_entries[index].type = newType;
 
@@ -190,11 +208,13 @@ bool DatabaseManager::updateEntryByIndex(int index, const QString& newAccount,
                  newName,
                  accountTypeToString(newType)));
 
-    // Rebuild index
-    m_accountIndex.clear();
-    for (int i = 0; i < m_entries.size(); ++i) {
-        if (!m_entries[i].account.isEmpty()) {
-            m_accountIndex[m_entries[i].account] = i;
+    // Update index incrementally instead of rebuilding
+    if (oldAccount != newAccountLower) {
+        if (!oldAccount.isEmpty()) {
+            m_accountIndex.remove(oldAccount);
+        }
+        if (!newAccountLower.isEmpty()) {
+            m_accountIndex[newAccountLower] = index;
         }
     }
 
@@ -213,16 +233,26 @@ bool DatabaseManager::hasIrlName(const QString& name) const {
 
 QString DatabaseManager::accountTypeToString(AccountType type) {
     switch (type) {
-    case AccountType::Personal: return "personal";
-    case AccountType::Curator:  return "curator";
-    case AccountType::IrlOnly:  return "irl_only";
-    default: return "unknown";
+    case AccountType::Personal:
+        return QStringLiteral("personal");
+    case AccountType::Curator:
+        return QStringLiteral("curator");
+    case AccountType::IrlOnly:
+        return QStringLiteral("irl_only");
+    default:
+        return QStringLiteral("unknown");
     }
 }
 
 AccountType DatabaseManager::stringToAccountType(const QString& str) {
-    if (str == "personal") return AccountType::Personal;
-    if (str == "curator")  return AccountType::Curator;
-    if (str == "irl_only") return AccountType::IrlOnly;
+    if (str == QStringLiteral("personal")) {
+        return AccountType::Personal;
+    }
+    if (str == QStringLiteral("curator")) {
+        return AccountType::Curator;
+    }
+    if (str == QStringLiteral("irl_only")) {
+        return AccountType::IrlOnly;
+    }
     return AccountType::Personal;  // default
 }

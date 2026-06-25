@@ -45,7 +45,7 @@ AccountEditRow::AccountEditRow(int dbIndex, const QString& account, const QStrin
     m_typeCombo->addItem("IRL Only");
 
     // Set current type
-    auto entry = m_db->getEntry(account);
+    auto entry = m_db->getEntry(account.toLower());
     int typeIndex = 0;  // Personal
     switch (entry.type) {
     case AccountType::Curator:  typeIndex = 1; break;

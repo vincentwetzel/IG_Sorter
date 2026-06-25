@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Database manager indexing**: account lookups now keep an incremental in-memory index instead of rebuilding the whole map after every update or delete.
+- **Duplicate finder thumbnail path**: perceptual-hash matches now run through a cached grayscale thumbnail similarity pass that compares actual pixel data rather than palette indices.
+- **Sorting screen batch flow**: empty groups are skipped automatically, invalid batch sizes are clamped before use, and out-of-range group access is guarded when the queue is exhausted.
+
 ### Removed
 - Removed the Instaloader downloader script, download history, downloader settings, downloaded media, and private-data submodule from this project. Downloader tooling and private data now live outside this repository.
 

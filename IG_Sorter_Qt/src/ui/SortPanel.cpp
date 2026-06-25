@@ -1,23 +1,23 @@
 #include "ui/SortPanel.h"
-#include "utils/ConfigManager.h"
 #include <algorithm>
-#include <QVBoxLayout>
-#include <QHBoxLayout>
-#include <QLayoutItem>
-#include <QLabel>
-#include <QPushButton>
-#include <QLineEdit>
+#include <QAbstractItemView>
 #include <QComboBox>
 #include <QCompleter>
-#include <QStringListModel>
+#include <QDesktopServices>
+#include <QHBoxLayout>
 #include <QKeyEvent>
+#include <QLabel>
+#include <QLayoutItem>
+#include <QLineEdit>
 #include <QPainter>
+#include <QPushButton>
+#include <QStringListModel>
 #include <QStyle>
 #include <QStyleOptionFrame>
-#include <QAbstractItemView>
-#include <QDesktopServices>
-#include <QUrl>
 #include <QTimer>
+#include <QUrl>
+#include <QVBoxLayout>
+#include "utils/ConfigManager.h"
 
 // Custom completer that strips "(account)" suffix on insertion
 // and treats the entire input as a single token (no word splitting)
@@ -27,9 +27,9 @@ public:
 
     QString pathFromIndex(const QModelIndex& index) const override {
         QString text = QCompleter::pathFromIndex(index);
-        int parenIdx = text.indexOf('(');
+        int parenIdx = text.indexOf(u'(');
         if (parenIdx > 0) {
-            return text.left(parenIdx).trimmed();
+            return text.first(parenIdx).trimmed();
         }
         return text;
     }
@@ -68,23 +68,23 @@ void GhostLineEdit::updateGhostGeometry() {
         return;
     }
 
-    QFontMetrics fm(font());
-    int textWidth = fm.horizontalAdvance(text());
+    const QFontMetrics fm(font());
+    const int textWidth = fm.horizontalAdvance(text());
 
     QStyleOptionFrame opt;
     initStyleOption(&opt);
-    QRect textRect = style()->subElementRect(QStyle::SE_LineEditContents, &opt, this);
+    const QRect textRect = style()->subElementRect(QStyle::SE_LineEditContents, &opt, this);
 
-    int x = textRect.x() + textWidth + 4;
-    int y = textRect.y();
-    int h = textRect.height();
+    const int x = textRect.x() + textWidth + 4;
+    const int y = textRect.y();
+    const int h = textRect.height();
 
     m_ghostRect = QRect(x, y, fm.horizontalAdvance(m_ghost) + 4, h);
 }
 
 bool GhostLineEdit::event(QEvent* event) {
     if (event->type() == QEvent::KeyPress) {
-        auto* keyEvent = static_cast<QKeyEvent*>(event);
+        const auto* keyEvent = static_cast<QKeyEvent*>(event);
         if (keyEvent->key() == Qt::Key_Tab || keyEvent->key() == Qt::Key_Backtab) {
             emit tabPressed();
             return true;
@@ -221,23 +221,20 @@ SortPanel::SortPanel(QWidget* parent)
 
     // Tab accepted — commit ghost completion
     connect(m_unknownNameEdit, &GhostLineEdit::tabPressed, this, [this]() {
-        QString ghost = m_unknownNameEdit->ghostText();
+        const QString ghost = m_unknownNameEdit->ghostText();
         if (!ghost.isEmpty()) {
             m_suppressGhost = true;
-            QString currentText = m_unknownNameEdit->text().toLower();
+            const QString currentText = m_unknownNameEdit->text();
+            const QString target = currentText + ghost;
             QString fullName;
-            for (const auto& entry : m_allCompleterEntries) {
-                int parenIdx = entry.indexOf('(');
-                QString irlName = (parenIdx > 0)
-                    ? entry.left(parenIdx).trimmed()
-                    : entry;
-                if (irlName.toLower() == currentText + ghost.toLower()) {
+            for (const auto& irlName : m_allIrlNames) {
+                if (irlName.compare(target, Qt::CaseInsensitive) == 0) {
                     fullName = irlName;
                     break;
                 }
             }
             if (fullName.isEmpty()) {
-                fullName = currentText + ghost;
+                fullName = target;
             }
             m_unknownNameEdit->setText(fullName);
             m_unknownNameEdit->setCursorPosition(fullName.length());
@@ -326,8 +323,10 @@ void SortPanel::refreshCompleter() {
     }
 
     // Build entries per-account so every account handle is searchable
+    const auto entries = m_db->allEntries();
     QList<QPair<QString, QString>> pairs;
-    for (const auto& entry : m_db->allEntries()) {
+    pairs.reserve(entries.size());
+    for (const auto& entry : entries) {
         if (entry.irlName.isEmpty()) continue;
 
         QString display;
@@ -336,20 +335,22 @@ void SortPanel::refreshCompleter() {
         } else {
             display = entry.irlName;
         }
-        pairs.append(qMakePair(display, entry.irlName));
+        pairs.append({display, entry.irlName});
     }
 
     // Sort by display text (case-insensitive)
     std::sort(pairs.begin(), pairs.end(),
-        [](const QPair<QString, QString>& a, const QPair<QString, QString>& b) {
+        [](const auto& a, const auto& b) {
             return a.first.compare(b.first, Qt::CaseInsensitive) < 0;
         });
 
     m_allCompleterEntries.clear();
     m_allIrlNames.clear();
-    for (const auto& p : pairs) {
-        m_allCompleterEntries.append(p.first);
-        m_allIrlNames.append(p.second);
+    m_allCompleterEntries.reserve(pairs.size());
+    m_allIrlNames.reserve(pairs.size());
+    for (const auto& [display, irlName] : pairs) {
+        m_allCompleterEntries.append(display);
+        m_allIrlNames.append(irlName);
     }
 
     m_completerModel->setStringList(m_allCompleterEntries);
@@ -492,21 +493,16 @@ int SortPanel::getUnknownAccountTypeIndex() const {
 void SortPanel::updateGhostText() {
     if (m_suppressGhost) return;
 
-    QString currentText = m_unknownNameEdit->text();
+    const QString currentText = m_unknownNameEdit->text();
     if (currentText.isEmpty()) {
         m_unknownNameEdit->clearGhost();
         return;
     }
 
-    QString lowerText = currentText.toLower();
-    for (const auto& entry : m_allCompleterEntries) {
-        int parenIdx = entry.indexOf('(');
-        QString irlName = (parenIdx > 0)
-            ? entry.left(parenIdx).trimmed()
-            : entry;
-
-        if (irlName.toLower().startsWith(lowerText) && irlName.length() > currentText.length()) {
-            QString ghost = irlName.mid(currentText.length());
+    const int currentLen = currentText.length();
+    for (const auto& irlName : m_allIrlNames) {
+        if (irlName.length() > currentLen && irlName.startsWith(currentText, Qt::CaseInsensitive)) {
+            QString ghost = irlName.sliced(currentLen);
             m_unknownNameEdit->setGhostText(ghost);
             return;
         }
@@ -517,24 +513,22 @@ void SortPanel::updateGhostText() {
 
 void SortPanel::rebuildFolderButtons() {
     // Clear existing buttons
-    for (auto* btn : m_folderButtons) {
-        delete btn;
-    }
     m_folderButtons.clear();
 
-    // Clear existing stretches from the layout
-    for (int i = m_folderButtonsLayout->count() - 1; i >= 0; --i) {
-        QLayoutItem* item = m_folderButtonsLayout->itemAt(i);
-        if (item && !item->widget()) {
-            // It's a stretch or spacer
-            delete m_folderButtonsLayout->takeAt(i);
+    // Take and delete everything from the layout to avoid memory leaks
+    while (m_folderButtonsLayout->count() > 0) {
+        QLayoutItem* item = m_folderButtonsLayout->takeAt(0);
+        if (QWidget* widget = item->widget()) {
+            widget->deleteLater();
         }
+        delete item;
     }
 
     m_folderButtonsLayout->addStretch();
 
-    for (int i = 0; i < m_outputFolders.size(); ++i) {
-        auto* btn = new QPushButton(m_outputFolders[i].name, this);
+    int i = 0;
+    for (const auto& folder : m_outputFolders) {
+        auto* btn = new QPushButton(folder.name, this);
         btn->setMinimumHeight(45);
         QFont btnFont = btn->font();
         btnFont.setPointSize(12);
@@ -545,6 +539,7 @@ void SortPanel::rebuildFolderButtons() {
         connect(btn, &QPushButton::clicked, this, [this, i]() {
             emit sortToFolderClicked(i);
         });
+        ++i;
     }
 
     m_folderButtonsLayout->addStretch();
@@ -552,13 +547,13 @@ void SortPanel::rebuildFolderButtons() {
 
 void SortPanel::setQuickFillNames(const QStringList& names) {
     // Always clear existing buttons and stretches first
-    for (auto* btn : m_favoriteButtons) {
-        delete btn;
-    }
     m_favoriteButtons.clear();
-    for (int i = m_favoritesLayout->count() - 1; i >= 0; --i) {
-        QLayoutItem* item = m_favoritesLayout->takeAt(i);
-        if (!item->widget()) delete item;  // stretch
+    while (m_favoritesLayout->count() > 0) {
+        QLayoutItem* item = m_favoritesLayout->takeAt(0);
+        if (QWidget* widget = item->widget()) {
+            widget->deleteLater();
+        }
+        delete item;
     }
 
     if (names.isEmpty()) {
@@ -577,9 +572,10 @@ void SortPanel::setQuickFillNames(const QStringList& names) {
         btn->setMinimumHeight(32);
         btn->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Preferred);
         btn->setCheckable(true);
-        connect(btn, &QPushButton::clicked, this, [this, name, btn]() {
+        const int nameLen = name.length();
+        connect(btn, &QPushButton::clicked, this, [this, name, nameLen]() {
             m_unknownNameEdit->setText(name);
-            m_unknownNameEdit->setCursorPosition(name.length());
+            m_unknownNameEdit->setCursorPosition(nameLen);
             m_unknownNameEdit->clearGhost();
         });
         m_favoriteButtons.append(btn);
@@ -594,22 +590,25 @@ void SortPanel::setQuickFillNames(const QStringList& names) {
 }
 
 void SortPanel::trimOverflowFavoriteButtons() {
-    int availableWidth = this->width() - m_favoritesLayout->contentsMargins().left()
-                       - m_favoritesLayout->contentsMargins().right();
-    int spacing = m_favoritesLayout->spacing();
+    const int availableWidth = this->width() - m_favoritesLayout->contentsMargins().left()
+                             - m_favoritesLayout->contentsMargins().right();
+    const int spacing = m_favoritesLayout->spacing();
     int usedWidth = 0;
-    int visibleCount = 0;
+    bool isFirst = true;
 
-    for (int i = 0; i < m_favoriteButtons.size(); ++i) {
-        auto* btn = m_favoriteButtons[i];
+    for (auto* btn : m_favoriteButtons) {
         int btnWidth = btn->sizeHint().width();
-        if (i > 0) usedWidth += spacing;
-        if (usedWidth + btnWidth <= availableWidth) {
-            btn->show();
-            usedWidth += btnWidth;
-            visibleCount++;
+        if (!isFirst) {
+            usedWidth += spacing;
         } else {
-            btn->hide();
+            isFirst = false;
+        }
+        bool shouldBeVisible = (usedWidth + btnWidth <= availableWidth);
+        if (btn->isVisible() != shouldBeVisible) {
+            btn->setVisible(shouldBeVisible);
+        }
+        if (shouldBeVisible) {
+            usedWidth += btnWidth;
         }
     }
 }
