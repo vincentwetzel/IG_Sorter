@@ -631,6 +631,8 @@ Unknown account?  Name: [Taylor Farr________]  Type: [Personal ▼]  [Add]
   values as `1` or the configured minimum before computing sub-batches.
 - All group/index access must guard against out-of-range values when the user
   reaches the end of the queue or when an empty source scan returns early.
+- Preview-grid relayout should be deferred when many thumbnails are removed in a
+  burst so the UI does not thrash on repeated resize/reflow work.
 
 ---
 
@@ -716,11 +718,22 @@ watcher.setFuture(...);  // or use QFutureSynchronizer
 
 ### 6.3 Thread Safety
 
-- Each worker operates on a **separate directory** — no shared file-system state
+- Each worker operates on a **separate directory** - no shared file-system state
   between threads.
 - `DatabaseManager` is read-only during cleanup (no writes occur).
 - Results are aggregated after all futures complete (no concurrent writes to the
   aggregated report).
+
+### 6.4 UI Responsiveness Notes
+
+- Rebuild-heavy widgets such as the preview grid should batch removals and use a
+  deferred relayout when multiple thumbnails disappear in quick succession.
+- Cleanup-screen resolution rows should tear down old widgets and layout items
+  cleanly before showing a new database session, so stale pointers are never
+  reused across runs.
+- Long-running sort actions that move files, delete to Recycle Bin, or undo a
+  previous sort should stay off the UI thread and re-enable controls only after
+  the background task finishes.
 
 ---
 
@@ -872,6 +885,10 @@ A comprehensive section-by-section audit identified these additional fixes:
 | 19 | Medium | `DuplicateFinderScreen` now supports cancel/restart behavior, live scan progress updates, and incremental group loading while scanning continues |
 | 20 | Medium | `MainWindow::showDuplicateFinderScreen()` now filters out missing output folders and removes duplicates before launching the finder |
 | 21 | Low | `SortingScreen::handleSortToFolder()` now pumps events after releasing preview image handles and removes only files that no longer exist at the source path |
+| 22 | Low | `ImagePreviewGrid` now uses deferred relayouts, standard algorithms, and batched update suppression to stay responsive while thumbnails are removed or reflowed |
+| 23 | Low | `CleanupScreen` now destroys old progress and resolution widgets before rebuilding, preventing stale UI state between cleanup runs |
+| 24 | Medium | `SortingScreen` now performs file moves, recycle-bin deletes, and undo operations asynchronously with `QFutureWatcher` so the UI stays responsive during slow disk work |
+| 25 | Low | `ThumbnailWithLabel` now derives the display filename from string slicing instead of re-creating `QFileInfo` data repeatedly, and uses a more direct platform-open path |
 
 ### Intentional Deviations from Plan
 

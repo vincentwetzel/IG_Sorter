@@ -1,12 +1,11 @@
 #include "ui/ImagePreviewGrid.h"
 
-#include <algorithm>
-
 #include <QGridLayout>
 #include <QKeyEvent>
 #include <QResizeEvent>
 #include <QSet>
 #include <QTimer>
+#include <algorithm>
 
 #include "ui/ImageThumbnail.h"
 #include "ui/ThumbnailWithLabel.h"
@@ -259,7 +258,10 @@ bool ImagePreviewGrid::hasImages() const {
     return !m_items.isEmpty();
 }
 
-void ImagePreviewGrid::setBatchInfo(const QString& /*current*/, const QString& /*total*/) {}
+void ImagePreviewGrid::setBatchInfo(const QString& current, const QString& total) {
+    Q_UNUSED(current);
+    Q_UNUSED(total);
+}
 
 void ImagePreviewGrid::selectAll() {
     for (auto* item : std::as_const(m_items)) {

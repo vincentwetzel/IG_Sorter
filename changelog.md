@@ -11,11 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Database manager indexing**: account lookups now keep an incremental in-memory index instead of rebuilding the whole map after every update or delete.
 - **Duplicate finder thumbnail path**: perceptual-hash matches now run through a cached grayscale thumbnail similarity pass that compares actual pixel data rather than palette indices.
 - **Sorting screen batch flow**: empty groups are skipped automatically, invalid batch sizes are clamped before use, and out-of-range group access is guarded when the queue is exhausted.
+- **Preview grid relayouts**: thumbnail removals now batch layout updates and defer relayout work, which keeps the sorting grid responsive during large deletes or batch transitions.
+- **Cleanup screen rebuilds**: directory progress and resolution widgets are torn down and rebuilt safely between cleanup sessions to avoid stale UI state.
+- **Async sort actions**: file moves, recycle-bin deletes, and undo operations now run off the UI thread and restore the controls only when the background task completes.
 
 ### Removed
 - Removed the Instaloader downloader script, download history, downloader settings, downloaded media, and private-data submodule from this project. Downloader tooling and private data now live outside this repository.
 
 ### Added
+- **Preview grid responsiveness**: the image preview grid now uses standard algorithms, batched update suppression, and deferred relayouts to avoid layout thrashing when thumbnails are removed in quick succession.
+- **Cleanup resolution lifecycle fixes**: the cleanup screen now clears and recreates resolution rows cleanly, including layout teardown, before showing a new set of unresolved names.
+- **Thumbnail label simplification**: filename labels now slice the display name directly from the path and use a simpler platform-open path for the hyperlink handler.
 - **Duplicate finder scan quality improvements**: duplicate matching now uses a cached 16x16 grayscale thumbnail similarity pass on top of perceptual hashes, with a name-based fast reject for already-sorted files to reduce false positives
 - **Duplicate finder UI sizing fixes**: the duplicate finder screen now constrains label growth and elides long filenames so the window stays stable during review
 - **IDE-style Tab autocomplete** for "Who is in these photos" field: gray ghost text appears after typed text, Tab commits the full name with proper capitalization and closes the completer dropdown

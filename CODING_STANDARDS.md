@@ -91,6 +91,7 @@ This document outlines the coding standards, naming conventions, and best practi
 - **UI Thread Responsiveness:** Heavy disk access, hash generation, and visual perceptual matching must occur on background threads using `QtConcurrent::run`, `QtConcurrent::map`, or a dedicated worker.
 - **Mutex Protection:** Any shared data structure (such as grouping caches or filename generators) accessed by background threads must be guarded using `QMutex` and `QMutexLocker`.
 - **Cross-Thread Connections:** When connecting signals from a background thread to a slot in the UI thread, rely on Qt's default `Qt::AutoConnection` (which resolves to `Qt::QueuedConnection` when crossing threads) to ensure UI components are only modified on the main GUI thread.
+- **Burst UI Updates:** When a widget can lose many children quickly, batch deletions, suppress updates briefly, and defer expensive relayout work instead of recalculating after every single removal.
 
 ### 3.6 Code Documentation
 - **Doxygen Style:** Document all public APIs and complex implementation blocks using Doxygen comments (`/** ... */`).

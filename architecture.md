@@ -34,11 +34,11 @@ The **IG_Sorter** project is a Qt 6 C++ desktop application (`IG_Sorter_Qt/`). I
 
 - **`MainWindow`**: Manages the screen stack: Menu -> Cleanup -> Sorting -> Report, plus account cleanup and duplicate finder screens.
 - **`MenuScreen`**: Startup screen with source folder link and Start Sorting, Clean Up Accounts, Find Duplicates, and Settings buttons.
-- **`CleanupScreen`**: Progress bars per output directory and unknown name resolution.
-- **`SortingScreen`**: Main batch-sorting UI with preview grid, sort panel, sub-batch management, progress header, empty-group skipping, and defensive bounds handling.
+- **`CleanupScreen`**: Progress bars per output directory, unknown name resolution, and safe widget teardown/rebuild between cleanup runs.
+- **`SortingScreen`**: Main batch-sorting UI with preview grid, sort panel, sub-batch management, progress header, empty-group skipping, async file actions, and defensive bounds handling.
 - **`SortPanel`**: Output folder buttons, selection controls, unknown account input, autocomplete, and favorites quick-fill buttons.
-- **`ImagePreviewGrid`**: Aspect-ratio-aware grid of selectable thumbnails with filename labels and pixel dimensions.
-- **`ThumbnailWithLabel`**: Combines thumbnail, pixel dimensions label, and clickable filename hyperlink.
+- **`ImagePreviewGrid`**: Aspect-ratio-aware grid of selectable thumbnails with filename labels and pixel dimensions, plus deferred relayout for removal-heavy updates.
+- **`ThumbnailWithLabel`**: Combines thumbnail, pixel dimensions label, and clickable filename hyperlink without repeated path slicing work.
 - **`ImageThumbnail`**: Single selectable thumbnail widget with WebP decoder fallback.
 - **`AddPersonDialog`**: Modal dialog prompting for IRL name and optional Instagram account.
 - **`ReportScreen`**: Summary of sorting results, errors, and directory file counts.

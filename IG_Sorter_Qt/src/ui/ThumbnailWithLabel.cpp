@@ -1,9 +1,11 @@
 #include "ui/ThumbnailWithLabel.h"
+
 #include <QDir>
 #include <QFileInfo>
 #include <QLabel>
 #include <QProcess>
 #include <QVBoxLayout>
+
 #include "ui/ImageThumbnail.h"
 
 ThumbnailWithLabel::ThumbnailWithLabel(const QString& filePath, QWidget* parent)
@@ -24,12 +26,13 @@ ThumbnailWithLabel::ThumbnailWithLabel(const QString& filePath, QWidget* parent)
     m_dimensionsLabel->setText("-");  // placeholder until image loads
     m_layout->addWidget(m_dimensionsLabel);
 
-    const QFileInfo fi(filePath);
-    const QString fileName = fi.fileName();
+    // Optimized: pure string parsing with non-owning QStringView slice (C++17/Qt 6)
+    const int lastSlash = qMax(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
+    const QStringView fileName = (lastSlash != -1) ? QStringView(filePath).sliced(lastSlash + 1) : QStringView(filePath);
 
     // Make the filename a clickable hyperlink
     m_nameLabel = new QLabel(this);
-    m_nameLabel->setText(QString("<a href=\"file://%1\">%2</a>")
+    m_nameLabel->setText(QStringLiteral("<a href=\"file://%1\">%2</a>")
                              .arg(filePath, fileName));
     m_nameLabel->setAlignment(Qt::AlignCenter);
     m_nameLabel->setWordWrap(true);
@@ -42,18 +45,16 @@ ThumbnailWithLabel::ThumbnailWithLabel(const QString& filePath, QWidget* parent)
 
     // Handle link clicks — open file explorer and highlight the file
 #ifdef Q_OS_WIN
-    const QString nativePath = QDir::toNativeSeparators(filePath);
-    connect(m_nameLabel, &QLabel::linkActivated, this, [nativePath]() {
-        QProcess::startDetached("explorer", {"/select,", nativePath});
+    connect(m_nameLabel, &QLabel::linkActivated, this, [filePath]() {
+        QProcess::startDetached("explorer", {"/select,", QDir::toNativeSeparators(filePath)});
     });
 #elif defined(Q_OS_MACOS)
     connect(m_nameLabel, &QLabel::linkActivated, this, [filePath]() {
         QProcess::startDetached("open", {"-R", filePath});
     });
 #else
-    const QString absolutePath = fi.absolutePath();
-    connect(m_nameLabel, &QLabel::linkActivated, this, [absolutePath]() {
-        QProcess::startDetached("xdg-open", {absolutePath});
+    connect(m_nameLabel, &QLabel::linkActivated, this, [filePath]() {
+        QProcess::startDetached("xdg-open", {QFileInfo(filePath).absolutePath()});
     });
 #endif
 
