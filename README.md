@@ -6,7 +6,7 @@ IG_Sorter is a Qt 6 desktop application for reviewing, identifying, sorting, and
 
 - Cleans up numbering in configured output folders and flags names that are not in the selected people database.
 - Groups source files by account and post, with support for Instagram downloads, Facebook and Twitter timestamps, TikTok slideshow IDs, and selected Android screenshots.
-- Shows image previews in configurable batches so files can be assigned to a person and destination folder.
+- Starts showing image previews in configurable batches as source files are discovered, so files can be assigned to a person and destination folder before the scan finishes.
 - Supports Personal, Curator, and IRL-only database entries, unknown-account handling, and account cleanup.
 - Includes a Duplicate Finder for reviewing likely matches in configured output folders, with user-confirmed Recycle Bin deletion and undo. The sorting pipeline also removes some exact-byte source duplicates automatically; see [duplicate handling](docs/ARCHITECTURE.md#duplicate-matching-and-file-removal).
 - Stores preferences with `QSettings`; logs and the duplicate scan cache use the platform application-data location.

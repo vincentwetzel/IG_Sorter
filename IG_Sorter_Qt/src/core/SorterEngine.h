@@ -63,6 +63,7 @@ signals:
     void cleanupProgress(const QString& dir, int current, int total);
     void cleanupDirectoryDone(const QString& dir, int filesRenamed);
     void groupProgress(int current, int total);
+    void groupsReady(const QList<FileGroup>& groups);
 
 private:
     DatabaseManager* m_db;

@@ -11,8 +11,8 @@ This document is a maintained snapshot of the current application plus follow-up
 - Configurable source and ordered destination folders, database path, preview batch size, and theme.
 - Preview selection and sub-batching, unknown account/person flows, favorites, add-person handling, and account cleanup.
 - Output numbering cleanup, extension correction, safe file movement, undo for recent sort moves, and report summaries.
-- Exact-byte duplicate checks during grouping and sorting; see the data-safety follow-up below for the current direct source-removal behavior.
-- Asynchronous grouping, cleanup, sorting file actions, deletion, and undo paths to keep the UI responsive. Sorting removes selected thumbnails and advances the visible batch optimistically, then reconciles the sorted count when file operations finish.
+- Exact-byte duplicate checks when sorting batches; confirmed output duplicates are still removed directly from the source with `QFile::remove`.
+- Streaming asynchronous grouping, cleanup, sorting file actions, deletion, and undo paths to keep the UI responsive. The sorting screen starts with groups emitted during source discovery and waits for more when the user catches up.
 - Recursive duplicate review with cached file hashes, perceptual image matching plus grayscale pixel comparison, exact SHA-256 fallback, progress, cancellation, streamed groups, Recycle Bin deletion, and undo support.
 - Light and dark QSS themes, application logging, and Windows WIC WebP preview fallback.
 

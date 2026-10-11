@@ -6,7 +6,7 @@ IG_Sorter is a Qt 6 / C++17 desktop application. Its primary project is `IG_Sort
 
 1. **Configure** source, destination, database, batch size, and theme in Settings. These preferences are persisted with `QSettings`.
 2. **Clean output directories** to repair file numbering and identify names that need review against the people database.
-3. **Discover and group source files** by parsing filenames, resolving account handles, and combining media from the same post. Exact-byte duplicates may be removed from the source during this pass.
+3. **Discover and group source files** by walking the source tree, correcting detected image-extension mismatches, parsing filenames, and resolving account handles. The sorting screen receives groups as the scan runs. Exact-byte duplicate checks against output folders are deferred until the user sorts a batch.
 4. **Review batches** in the preview grid. The user selects files, supplies or confirms the person name, and chooses a destination.
 5. **Review the report** for sorted/skipped counts, errors, and output-folder counts.
 6. **Find duplicates when needed** by scanning configured output folders, reviewing streamed groups, and choosing files to keep or send to the Recycle Bin.
@@ -16,10 +16,10 @@ IG_Sorter is a Qt 6 / C++17 desktop application. Its primary project is `IG_Sort
 ### Core (`IG_Sorter_Qt/src/core/`)
 
 - `FileNameParser` recognizes supported filename conventions and returns the account/source metadata used downstream.
-- `FileGrouper` scans and groups source files, resolves known accounts, and orders groups, including screenshot-related ordering behavior.
+- `FileGrouper` scans source directories and resolves known accounts. The interactive sorting flow uses `groupStreaming`, which emits sorted groups after each chunk of up to 20 eligible image files and at each directory boundary. Grouping is local to each emitted chunk, so one post's files can appear in separate groups if a chunk boundary falls between them. This streaming path does not perform the screenshot-group merging used by the non-streaming `group` method.
 - `DatabaseManager` loads and saves the selected JSON database, provides case-insensitive account lookup, and maintains an account-to-entry index.
 - `DirectoryCleanup` analyzes output directory names and performs safe numbering cleanup.
-- `ExtensionFixer` checks file content and corrects mismatched image extensions.
+- `ExtensionFixer` checks file content and corrects mismatched image extensions during streaming source discovery.
 - `SorterEngine` coordinates cleanup, grouping, sorting, duplicate checks during sorting, and undo history. It also keeps an in-memory grouping cache.
 - `DuplicateFinder` recursively scans output paths, computes and caches file metadata/hashes, and emits likely duplicate groups.
 - `Types.h` contains shared report data types.
@@ -74,7 +74,7 @@ These are candidate-matching rules, not a guarantee that every visual variation 
 
 ### Automatic exact duplicate removal in sorting
 
-The sorting pipeline has an additional exact-byte check, separate from the Duplicate Finder screen. During grouping it compares same-size source files by SHA-256 and checks known-person files against same-name candidates in configured output folders. When a match is found, it calls `QFile::remove` on the source file before the preview is shown. During sorting, it repeats the output-folder check and removes a duplicate source instead of moving it. These automatic removals are not sent to the Recycle Bin and are not included in either undo workflow. A hash/read failure prevents a match; a confirmed exact match is removed directly.
+The sorting pipeline has an additional exact-byte check, separate from the Duplicate Finder screen. The earlier pre-group pass that hashed source files against each other has been removed. When the user sorts a batch, the pipeline checks same-name candidates in configured output folders by size and SHA-256, then removes a confirmed duplicate source instead of moving it. This automatic removal is not sent to the Recycle Bin and is not included in the undo workflow. A hash/read failure prevents a match. The interactive grouping path corrects detected image-extension mismatches as it discovers eligible files, then emits groups in chunks of up to 20 files and flushes at directory boundaries. This lets sorting begin before the scan finishes, but a post may be split when its files cross a chunk or directory boundary. The non-streaming grouper's screenshot merge is not part of this interactive path.
 
 The Duplicate Finder screen remains the manual review flow: it presents likely groups and sends user-selected files to the Recycle Bin with its own undo support. It uses perceptual matching for supported images and exact-byte SHA-256 matching for unsupported content.
 

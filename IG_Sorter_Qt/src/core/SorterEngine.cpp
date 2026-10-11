@@ -133,110 +133,20 @@ QList<FileGroup> SorterEngine::groupFiles() {
     // Check if we have a valid cache
     if (isCacheValid()) {
         LogManager::instance()->info("Using cached grouping results (skipping disk scan)");
+        emit groupsReady(m_cachedGroups);
         return m_cachedGroups;
     }
 
     LogManager::instance()->info("Cache invalid or missing — performing full disk scan");
 
-    // Fix file extensions before grouping so all images load correctly
-    ExtensionFixReport fixReport = ExtensionFixer::run(m_sourceDir);
-    if (fixReport.filesRenamed > 0) {
-        LogManager::instance()->info(
-            QString("Fixed %1 file extensions in source directory").arg(fixReport.filesRenamed));
-    }
-
     LogManager::instance()->info(QString("Grouping files from: %1").arg(m_sourceDir));
     FileGrouper grouper(m_db);
-    QList<FileGroup> groups = grouper.group(m_sourceDir);
+    connect(&grouper, &FileGrouper::groupsReady, this, &SorterEngine::groupsReady,
+            Qt::DirectConnection);
+    QList<FileGroup> groups = grouper.groupStreaming(m_sourceDir);
     LogManager::instance()->info(QString("Found %1 groups").arg(groups.size()));
 
-    // Preemptive deduplication before presenting batches to the user
-    int preDupesRemoved = 0;
-    DirCache dirCache;
-    struct KeptFile {
-        QString filePath;
-        QByteArray hash;
-    };
-    QHash<qint64, QVector<KeptFile>> keptInputFiles;
-
-    for (auto& group : groups) {
-        QStringList nonDuplicatePaths;
-        for (const QString& filePath : group.filePaths) {
-            QFileInfo sourceInfo(filePath);
-            qint64 sourceSize = sourceInfo.size();
-            if (sourceSize <= 0) {
-                nonDuplicatePaths.append(filePath);
-                continue;
-            }
-
-            bool isDupe = false;
-            QString dupeSource;
-
-            // 1. Check if this is an exact duplicate of a file we already decided to keep in this scan
-            if (keptInputFiles.contains(sourceSize)) {
-                QByteArray sourceHash;
-                auto& candidates = keptInputFiles[sourceSize];
-                for (auto& candidate : candidates) {
-                    if (candidate.hash.isEmpty()) {
-                        candidate.hash = getFileHash(candidate.filePath);
-                    }
-                    if (!candidate.hash.isEmpty()) {
-                        if (sourceHash.isEmpty()) {
-                            sourceHash = getFileHash(filePath);
-                        }
-                        if (sourceHash == candidate.hash) {
-                            isDupe = true;
-                            dupeSource = candidate.filePath;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // 2. If it's not a local input dupe, and we have a known IRL name, check the output folders
-            if (!isDupe && !group.irlName.isEmpty()) {
-                QString duplicatePath = findExactDuplicate(filePath, group.irlName, m_outputDirs, dirCache);
-                if (!duplicatePath.isEmpty()) {
-                    isDupe = true;
-                    dupeSource = duplicatePath;
-                }
-            }
-
-            if (isDupe) {
-                LogManager::instance()->info(
-                    QString("[Pre-Sort De-dupe] File %1 is an exact duplicate of %2. Deleting source preemptively.")
-                        .arg(sourceInfo.fileName(), QFileInfo(dupeSource).fileName()));
-                if (QFile::remove(filePath)) {
-                    preDupesRemoved++;
-                } else {
-                    LogManager::instance()->warning(
-                        QString("[Pre-Sort De-dupe] Failed to remove duplicate source file %1").arg(filePath));
-                    nonDuplicatePaths.append(filePath);
-                }
-            } else {
-                nonDuplicatePaths.append(filePath);
-                
-                // Add to our kept input files cache
-                keptInputFiles[sourceSize].append({filePath, QByteArray()});
-
-                // Also populate output dirCache if the group has an IRL name
-                if (!group.irlName.isEmpty()) {
-                    QString key = group.irlName.toLower().trimmed();
-                    if (dirCache.contains(key)) {
-                        dirCache[key].append({filePath, sourceSize});
-                    }
-                }
-            }
-        }
-        group.filePaths = nonDuplicatePaths;
-    }
-
-    if (preDupesRemoved > 0) {
-        LogManager::instance()->info(QString("[Pre-Sort De-dupe] Preemptively removed %1 duplicate files from source directory.").arg(preDupesRemoved));
-        groups.erase(std::remove_if(groups.begin(), groups.end(), [](const FileGroup& g) {
-            return g.filePaths.isEmpty();
-        }), groups.end());
-    }
+    // Exact duplicate checks run when a batch is sorted. Deferring hashing keeps slow checks from delaying the first preview and prevents the worker from changing files already visible in the sorting screen.
 
     // Cache the results
     m_cachedGroups = groups;

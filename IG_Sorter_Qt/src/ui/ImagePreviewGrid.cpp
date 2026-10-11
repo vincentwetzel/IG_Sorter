@@ -17,6 +17,8 @@ ImagePreviewGrid::ImagePreviewGrid(QWidget* parent)
     : QWidget(parent), m_gridLayout(new QGridLayout(this)) {
     m_gridLayout->setSpacing(4);
     m_gridLayout->setContentsMargins(4, 4, 4, 4);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    setMinimumSize(0, 0);
     setFocusPolicy(Qt::StrongFocus);  // Allow keyboard focus for DELETE key
 }
 
@@ -109,18 +111,19 @@ void ImagePreviewGrid::rebuildGrid() {
     const bool colsChanged = (cols != m_cols);
     m_cols = cols;
 
+    for (int c = 0; c < m_gridLayout->columnCount(); ++c) {
+        m_gridLayout->setColumnStretch(c, 0);
+        m_gridLayout->setColumnMinimumWidth(c, 0);
+    }
+    for (int r = 0; r < m_gridLayout->rowCount(); ++r) {
+        m_gridLayout->setRowStretch(r, 0);
+        m_gridLayout->setRowMinimumHeight(r, 0);
+    }
+
     if (colsChanged) {
         LogManager::instance()->info("ImagePreviewGrid::rebuildGrid cols changed, clearing layout");
         for (auto* item : std::as_const(m_items)) {
             m_gridLayout->removeWidget(item);
-        }
-        for (int c = 0; c < m_gridLayout->columnCount(); ++c) {
-            m_gridLayout->setColumnStretch(c, 0);
-            m_gridLayout->setColumnMinimumWidth(c, 0);
-        }
-        for (int r = 0; r < m_gridLayout->rowCount(); ++r) {
-            m_gridLayout->setRowStretch(r, 0);
-            m_gridLayout->setRowMinimumHeight(r, 0);
         }
     }
 
@@ -133,11 +136,16 @@ void ImagePreviewGrid::rebuildGrid() {
         m_items[i]->thumbnail()->setCellSize(cellSize);
     }
 
+    // Cell dimensions are targets for the thumbnail renderer, not minimum
+    // constraints on the window. Hard row/column minimums here make the whole
+    // screen impossible to shrink after a wide layout has been shown once.
     for (int r = 0; r < rows; ++r) {
-        m_gridLayout->setRowMinimumHeight(r, cellHeight);
+        m_gridLayout->setRowMinimumHeight(r, 0);
+        m_gridLayout->setRowStretch(r, 1);
     }
     for (int c = 0; c < cols; ++c) {
-        m_gridLayout->setColumnMinimumWidth(c, cellWidth);
+        m_gridLayout->setColumnMinimumWidth(c, 0);
+        m_gridLayout->setColumnStretch(c, 1);
     }
 
     setUpdatesEnabled(true);

@@ -24,6 +24,10 @@ public:
     explicit SortingScreen(QWidget* parent = nullptr);
 
     void setGroups(const QList<FileGroup>& groups);
+    void beginStreamingGroups();
+    void appendGroups(const QList<FileGroup>& groups);
+    void finishStreamingGroups();
+    int availableGroupCount() const { return m_groups.size(); }
     void loadNextBatch();
     void setOutputFolders(const QVector<OutputFolderConfig>& folders);
     void setDatabaseManager(DatabaseManager* db);
@@ -76,6 +80,8 @@ private:
     QList<FileGroup>  m_groups;
     int               m_currentGroup;
     int               m_currentSubBatch;
+    bool              m_groupingComplete = true;
+    bool              m_waitingForGroups = false;
 
     QVector<OutputFolderConfig> m_outputFolders;
     DatabaseManager*   m_db;

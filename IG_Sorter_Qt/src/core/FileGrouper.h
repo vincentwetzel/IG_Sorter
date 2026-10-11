@@ -4,6 +4,7 @@
 #include <QList>
 #include <QFileInfo>
 #include <QObject>
+#include <QMetaType>
 #include "core/FileNameParser.h"
 #include "core/DatabaseManager.h"
 
@@ -18,6 +19,8 @@ struct FileGroup {
     FileGroup() : isKnown(false), accountType(AccountType::Personal) {}
 };
 
+Q_DECLARE_METATYPE(QList<FileGroup>)
+
 class FileGrouper : public QObject {
     Q_OBJECT
 public:
@@ -26,8 +29,12 @@ public:
     // Blocking call — run in a worker thread
     QList<FileGroup> group(const QString& sourceDir);
 
+    // Emits small, independently sortable chunks while walking the source tree.
+    QList<FileGroup> groupStreaming(const QString& sourceDir);
+
 signals:
     void progressChanged(int current, int total);
+    void groupsReady(const QList<FileGroup>& groups);
 
 private:
     DatabaseManager* m_db;

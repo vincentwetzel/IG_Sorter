@@ -4,12 +4,18 @@
 #include <QFileInfo>
 #include <QLabel>
 #include <QProcess>
+#include <QSizePolicy>
 #include <QVBoxLayout>
 
 #include "ui/ImageThumbnail.h"
 
 ThumbnailWithLabel::ThumbnailWithLabel(const QString& filePath, QWidget* parent)
     : QWidget(parent) {
+    // Long filenames can have large natural size hints. Let the preview grid
+    // allocate the cell width instead of allowing a label to widen the window.
+    setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
+    setMinimumSize(0, 0);
+
     m_layout = new QVBoxLayout(this);
     m_layout->setContentsMargins(0, 0, 0, 0);
     m_layout->setSpacing(2);

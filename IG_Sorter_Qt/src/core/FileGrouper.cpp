@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
+#include <utility>
 
 #include <QDateTime>
 #include <QDir>
@@ -11,6 +13,7 @@
 #include <QSet>
 
 #include "core/DatabaseManager.h"
+#include "core/ExtensionFixer.h"
 
 // Time window in seconds for merging screenshot groups taken close together
 static const int SCREENSHOT_MERGE_WINDOW_SEC = 15;
@@ -224,4 +227,119 @@ QList<FileGroup> FileGrouper::group(const QString& sourceDir) {
         });
 
     return groups;
+}
+
+QList<FileGroup> FileGrouper::groupStreaming(const QString& sourceDir) {
+    static const QSet<QString> imageExtensions = {
+        "jpg", "jpeg", "png", "gif", "bmp", "webp", "tiff", "tif", "svg", "ico"
+    };
+    constexpr int filesPerChunk = 20;
+
+    QList<FileGroup> allGroups;
+    QStringList pendingFiles;
+    int scannedFiles = 0;
+
+    auto flushChunk = [this, &allGroups, &pendingFiles, &scannedFiles]() {
+        if (pendingFiles.isEmpty()) {
+            return;
+        }
+
+        QList<FileGroup> chunkGroups;
+        QHash<QString, int> groupIndex;
+        for (const QString& filePath : std::as_const(pendingFiles)) {
+            ParsedResult parsed = FileNameParser::parse(filePath);
+            QString accountHandle;
+            QString postTimestamp;
+            QString key;
+            if (parsed.matched) {
+                accountHandle = parsed.accountHandle;
+                postTimestamp = parsed.postTimestamp;
+                key = accountHandle + "|||" + postTimestamp;
+            } else {
+                accountHandle = "Unknown";
+                postTimestamp = QFileInfo(filePath).dir().dirName();
+                key = "Unknown|||" + postTimestamp;
+            }
+
+            auto it = groupIndex.find(key);
+            if (it == groupIndex.end()) {
+                FileGroup group;
+                group.accountHandle = accountHandle;
+                group.postTimestamp = postTimestamp;
+                if (parsed.sourceEnum != SourceType::Instagram &&
+                    parsed.sourceEnum != SourceType::Unknown) {
+                    group.isKnown = true;
+                    group.accountType = AccountType::IrlOnly;
+                } else if (parsed.matched && m_db && m_db->hasAccount(accountHandle)) {
+                    const PersonEntry entry = m_db->getEntry(accountHandle.toLower());
+                    if (!entry.irlName.isEmpty()) {
+                        group.isKnown = true;
+                        group.accountType = entry.type;
+                        if (entry.type != AccountType::Curator && entry.type != AccountType::IrlOnly) {
+                            group.irlName = entry.irlName;
+                        }
+                    }
+                }
+                it = groupIndex.insert(key, chunkGroups.size());
+                chunkGroups.append(group);
+            }
+            chunkGroups[it.value()].filePaths.append(filePath);
+        }
+
+        std::sort(chunkGroups.begin(), chunkGroups.end(), [](const FileGroup& a, const FileGroup& b) {
+            if (a.accountHandle != b.accountHandle) {
+                return a.accountHandle < b.accountHandle;
+            }
+            return a.postTimestamp < b.postTimestamp;
+        });
+        allGroups.append(chunkGroups);
+        emit groupsReady(chunkGroups);
+        scannedFiles += pendingFiles.size();
+        emit progressChanged(scannedFiles, 0);
+        pendingFiles.clear();
+    };
+
+    std::function<void(const QString&)> scanDirectory;
+    scanDirectory = [&scanDirectory, &pendingFiles, &flushChunk](const QString& directoryPath) {
+        const QDir directory(directoryPath);
+        const QFileInfoList files = directory.entryInfoList(QDir::Files, QDir::Name);
+        const QFileInfoList subdirectories = directory.entryInfoList(
+            QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+
+        // Snapshot each directory before emitting its files so sorting cannot
+        // make the iterator miss entries that it has not visited yet.
+        for (const QFileInfo& fileInfo : files) {
+            QString path = fileInfo.absoluteFilePath();
+            const QString ext = fileInfo.suffix().toLower();
+            if (!imageExtensions.contains(ext)) {
+                continue;
+            }
+
+            const QString detectedFormat = ExtensionFixer::detectFormat(path);
+            if (ExtensionFixer::needsExtensionFix(path, detectedFormat)) {
+                ExtensionFixReport report;
+                if (ExtensionFixer::fixFileExtension(path, detectedFormat, report) &&
+                    !report.renamedFiles.isEmpty()) {
+                    path = fileInfo.absolutePath() + "/" + fileInfo.completeBaseName() + "." + detectedFormat;
+                }
+            }
+            pendingFiles.append(path);
+            if (pendingFiles.size() >= filesPerChunk) {
+                flushChunk();
+            }
+        }
+
+        // Do not wait for files in nested folders before showing the first
+        // results from this directory.
+        flushChunk();
+
+        for (const QFileInfo& subdirectory : subdirectories) {
+            if (!subdirectory.isSymLink()) {
+                scanDirectory(subdirectory.absoluteFilePath());
+            }
+        }
+    };
+    scanDirectory(sourceDir);
+    flushChunk();
+    return allGroups;
 }

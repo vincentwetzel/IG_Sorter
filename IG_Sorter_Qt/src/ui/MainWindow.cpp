@@ -28,6 +28,7 @@
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
+    qRegisterMetaType<QList<FileGroup>>("QList<FileGroup>");
     setWindowTitle("IG Sorter");
     resize(1200, 800);
 
@@ -273,15 +274,29 @@ void MainWindow::showSortingScreen() {
     }
     m_engine->initialize(sourceDir, outputDirPaths);
 
-    // Run file grouping asynchronously to avoid blocking the UI
+    // Prepare the sorting screen to accept groups as the worker discovers them.
     m_statusBar->showMessage("Scanning and grouping files...");
     m_cleanupScreen->setDirectories(QStringList());  // clear old progress bars
     m_cleanupScreen->setStatusText("Grouping files from source directory...");
     m_cleanupScreen->enableContinue(false);
     showCleanupScreen();  // keep showing cleanup screen while grouping
 
+    m_sortingScreen->setOutputFolders(ConfigManager::instance()->outputFolders());
+    m_sortingScreen->beginStreamingGroups();
+
     m_groupWatcher = new QFutureWatcher<QList<FileGroup>>();
     QFutureWatcher<QList<FileGroup>>* watcher = m_groupWatcher;
+
+    connect(m_engine, &SorterEngine::groupsReady, this,
+            [this, watcher](const QList<FileGroup>& groups) {
+                if (m_groupWatcher != watcher || groups.isEmpty()) return;
+                m_sortingScreen->appendGroups(groups);
+                if (m_stackedWidget->currentWidget() != m_sortingScreen) {
+                    m_stackedWidget->setCurrentWidget(m_sortingScreen);
+                }
+                m_statusBar->showMessage(QString("Sorting while scanning: %1 groups found")
+                                             .arg(m_sortingScreen->availableGroupCount()));
+            });
 
     connect(watcher, &QFutureWatcher<QList<FileGroup>>::finished,
             this, [this, watcher]() {
@@ -291,18 +306,10 @@ void MainWindow::showSortingScreen() {
                 watcher->deleteLater();
                 if (m_groupWatcher == watcher) m_groupWatcher = nullptr;
 
-                // Load output folders into the sort panel
-                LogManager::instance()->info(QString("SortingScreen init: groups=%1, outputFolders=%2")
-                    .arg(groups.size())
-                    .arg(ConfigManager::instance()->outputFolders().size()));
-                m_sortingScreen->setOutputFolders(ConfigManager::instance()->outputFolders());
-                LogManager::instance()->info("SortingScreen init: setOutputFolders complete");
-                m_sortingScreen->setGroups(groups);
-                LogManager::instance()->info("SortingScreen init: setGroups complete");
-
+                m_sortingScreen->finishStreamingGroups();
                 m_stackedWidget->setCurrentWidget(m_sortingScreen);
-                LogManager::instance()->info("SortingScreen init: setCurrentWidget complete");
-                m_statusBar->showMessage(QString("Sorting: %1 groups found").arg(groups.size()));
+                m_statusBar->showMessage(QString("Grouping complete: %1 groups found")
+                                             .arg(groups.size()));
             });
 
     m_groupWatcher->setFuture(QtConcurrent::run([this]() {

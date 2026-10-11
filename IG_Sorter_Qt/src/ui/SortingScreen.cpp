@@ -114,6 +114,8 @@ SortingScreen::SortingScreen(QWidget* parent)
 void SortingScreen::setGroups(const QList<FileGroup>& groups) {
     LogManager::instance()->info(QString("SortingScreen::setGroups called with %1 groups").arg(groups.size()));
     m_groups = groups;
+    m_groupingComplete = true;
+    m_waitingForGroups = false;
     m_currentGroup = 0;
     m_currentSubBatch = 0;
     m_filesSorted = 0;
@@ -139,6 +141,62 @@ void SortingScreen::setGroups(const QList<FileGroup>& groups) {
 
     m_headerLabel->setText("No files found in source directory.");
     m_finishButton->setEnabled(true);
+}
+
+void SortingScreen::beginStreamingGroups() {
+    m_groups.clear();
+    m_currentGroup = 0;
+    m_currentSubBatch = 0;
+    m_groupingComplete = false;
+    m_waitingForGroups = true;
+    m_filesSorted = 0;
+    m_filesSkipped = 0;
+    m_errors = 0;
+    m_errorMessages.clear();
+    m_newAccountsAdded.clear();
+    m_filesByAccountType.clear();
+    m_currentSourceType.clear();
+    m_nameCounts.clear();
+    m_previewGrid->clear();
+    m_previewGrid->setEnabled(false);
+    m_sortPanel->setEnabled(false);
+    m_headerLabel->setText("Finding the first files...");
+    m_finishButton->setEnabled(false);
+}
+
+void SortingScreen::appendGroups(const QList<FileGroup>& groups) {
+    if (groups.isEmpty()) {
+        return;
+    }
+    m_groups.append(groups);
+    if (m_waitingForGroups) {
+        m_waitingForGroups = false;
+        m_sortPanel->setEnabled(true);
+        m_previewGrid->setEnabled(true);
+        loadNextBatch();
+    } else {
+        updateHeader();
+    }
+}
+
+void SortingScreen::finishStreamingGroups() {
+    m_groupingComplete = true;
+    if (m_groups.isEmpty()) {
+        m_waitingForGroups = false;
+        m_sortPanel->setEnabled(false);
+        m_previewGrid->setEnabled(false);
+        m_headerLabel->setText("No files found in source directory.");
+        m_finishButton->setEnabled(true);
+        return;
+    }
+    if (m_waitingForGroups || m_currentGroup >= m_groups.size()) {
+        m_waitingForGroups = false;
+        m_sortPanel->setEnabled(true);
+        m_previewGrid->setEnabled(true);
+        loadNextBatch();
+    } else {
+        updateHeader();
+    }
 }
 
 void SortingScreen::setOutputFolders(const QVector<OutputFolderConfig>& folders) {
@@ -199,6 +257,15 @@ void SortingScreen::loadNextBatch() {
         }
 
         updateHeader();
+        return;
+    }
+
+    if (!m_groupingComplete) {
+        m_waitingForGroups = true;
+        m_sortPanel->setEnabled(false);
+        m_previewGrid->setEnabled(false);
+        m_finishButton->setEnabled(false);
+        m_headerLabel->setText("All found files sorted. Looking for more...");
         return;
     }
 

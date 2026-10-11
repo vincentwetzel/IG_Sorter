@@ -16,7 +16,7 @@ public:
     // Scan a directory and fix files with wrong extensions
     static ExtensionFixReport run(const QString& sourceDir);
 
-private:
+    // Used by the streaming grouper to fix each file as it is discovered.
     static QString detectFormat(const QString& filePath);
     static bool    needsExtensionFix(const QString& filePath, const QString& detectedFormat);
     static bool    fixFileExtension(const QString& filePath, const QString& correctFormat,
