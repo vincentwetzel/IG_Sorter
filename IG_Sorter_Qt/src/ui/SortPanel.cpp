@@ -4,17 +4,18 @@
 #include <QComboBox>
 #include <QCompleter>
 #include <QDesktopServices>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLayoutItem>
 #include <QLineEdit>
+#include <QMargins>
 #include <QPainter>
 #include <QPushButton>
 #include <QStringListModel>
 #include <QStyle>
 #include <QStyleOptionFrame>
-#include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
 #include "utils/ConfigManager.h"
@@ -281,9 +282,10 @@ SortPanel::SortPanel(QWidget* parent)
 
     // Quick-fill name buttons (favorites) for IrlOnly sources
     m_favoritesWidget = new QWidget(this);
-    m_favoritesLayout = new QHBoxLayout(m_favoritesWidget);
+    m_favoritesLayout = new QGridLayout(m_favoritesWidget);
     m_favoritesLayout->setContentsMargins(0, 0, 0, 0);
-    m_favoritesLayout->setSpacing(6);
+    m_favoritesLayout->setHorizontalSpacing(6);
+    m_favoritesLayout->setVerticalSpacing(4);
     m_favoritesWidget->hide();
     m_mainLayout->addWidget(m_favoritesWidget);
 
@@ -362,9 +364,9 @@ bool SortPanel::eventFilter(QObject* watched, QEvent* event) {
 
 void SortPanel::resizeEvent(QResizeEvent* event) {
     QWidget::resizeEvent(event);
-    // Re-evaluate favorite buttons visibility on resize
+    // Reflow favorite buttons when the available width changes.
     if (!m_favoriteButtons.isEmpty()) {
-        trimOverflowFavoriteButtons();
+        layoutFavoriteButtons();
     }
     // Reposition ghost if visible
     if (!m_unknownNameEdit->ghostText().isEmpty()) {
@@ -580,14 +582,14 @@ void SortPanel::setQuickFillNames(const QStringList& names) {
         return;
     }
 
-    // Create all buttons first
+    // Create all buttons first, then place them in rows that fit the panel.
     for (const QString& name : names) {
         auto* btn = new QPushButton(name, m_favoritesWidget);
         QFont font = btn->font();
         font.setPointSize(9);
         btn->setFont(font);
         btn->setMinimumHeight(32);
-        btn->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Preferred);
+        btn->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
         btn->setCheckable(true);
         const int nameLen = name.length();
         connect(btn, &QPushButton::clicked, this, [this, name, nameLen]() {
@@ -596,37 +598,34 @@ void SortPanel::setQuickFillNames(const QStringList& names) {
             m_unknownNameEdit->clearGhost();
         });
         m_favoriteButtons.append(btn);
-        m_favoritesLayout->addWidget(btn);
     }
-    m_favoritesLayout->addStretch();
 
-    // Trim overflow buttons after layout completes
-    QTimer::singleShot(0, this, [this]() { trimOverflowFavoriteButtons(); });
+    layoutFavoriteButtons();
 
     m_favoritesWidget->show();
 }
 
-void SortPanel::trimOverflowFavoriteButtons() {
-    const int availableWidth = this->width() - m_favoritesLayout->contentsMargins().left()
-                             - m_favoritesLayout->contentsMargins().right();
-    const int spacing = m_favoritesLayout->spacing();
+void SortPanel::layoutFavoriteButtons() {
+    const QMargins margins = m_mainLayout->contentsMargins();
+    const int availableWidth = qMax(1, width() - margins.left() - margins.right());
+    const int spacing = m_favoritesLayout->horizontalSpacing();
+    int row = 0;
+    int column = 0;
     int usedWidth = 0;
-    bool isFirst = true;
 
     for (auto* btn : m_favoriteButtons) {
-        int btnWidth = btn->sizeHint().width();
-        if (!isFirst) {
-            usedWidth += spacing;
-        } else {
-            isFirst = false;
+        m_favoritesLayout->removeWidget(btn);
+
+        const int buttonWidth = qMin(btn->sizeHint().width(), availableWidth);
+        if (column > 0 && usedWidth + spacing + buttonWidth > availableWidth) {
+            ++row;
+            column = 0;
+            usedWidth = 0;
         }
-        bool shouldBeVisible = (usedWidth + btnWidth <= availableWidth);
-        if (btn->isVisible() != shouldBeVisible) {
-            btn->setVisible(shouldBeVisible);
-        }
-        if (shouldBeVisible) {
-            usedWidth += btnWidth;
-        }
+
+        btn->setMaximumWidth(availableWidth);
+        m_favoritesLayout->addWidget(btn, row, column++);
+        usedWidth += (column > 1 ? spacing : 0) + buttonWidth;
     }
 }
 

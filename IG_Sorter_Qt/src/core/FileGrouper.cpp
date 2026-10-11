@@ -41,7 +41,7 @@ static bool isAndroidScreenshot(SourceType t) {
            t == SourceType::AndroidScreenshot_Chrome;
 }
 
-static void mergePostsByAccount(QList<FileGroup>& groups) {
+static void mergePersonalPostsByAccount(QList<FileGroup>& groups) {
     std::sort(groups.begin(), groups.end(),
         [](const FileGroup& a, const FileGroup& b) {
             const int accountOrder = QString::compare(a.accountHandle, b.accountHandle, Qt::CaseInsensitive);
@@ -54,12 +54,16 @@ static void mergePostsByAccount(QList<FileGroup>& groups) {
     QList<FileGroup> mergedGroups;
     mergedGroups.reserve(groups.size());
     for (const FileGroup& group : std::as_const(groups)) {
-        const bool canMerge = !group.accountHandle.isEmpty() &&
+        const bool canMerge = group.isKnown &&
+                              group.accountType == AccountType::Personal &&
+                              !group.accountHandle.isEmpty() &&
                               group.accountHandle != "Unknown" &&
                               group.accountHandle != "Screenshots";
         if (canMerge && !mergedGroups.isEmpty()) {
             FileGroup& previous = mergedGroups.last();
             if (previous.accountHandle.compare(group.accountHandle, Qt::CaseInsensitive) == 0 &&
+                previous.isKnown &&
+                previous.accountType == AccountType::Personal &&
                 previous.accountHandle != "Unknown" &&
                 previous.accountHandle != "Screenshots") {
                 previous.filePaths.append(group.filePaths);
@@ -244,9 +248,9 @@ QList<FileGroup> FileGrouper::group(const QString& sourceDir) {
         }
     }
 
-    // Combine posts from the same account so the sorting screen can fill a
-    // configured batch with photos across post boundaries.
-    mergePostsByAccount(groups);
+    // Combine known personal-account posts so batches can span post boundaries.
+    // Curator and IrlOnly posts stay separate because each may need its own name.
+    mergePersonalPostsByAccount(groups);
 
     return groups;
 }
@@ -366,7 +370,7 @@ QList<FileGroup> FileGrouper::groupStreaming(const QString& sourceDir) {
 
     // A later chunk may contain more posts from an account already seen, so
     // wait until scanning is complete before emitting consolidated groups.
-    mergePostsByAccount(allGroups);
+    mergePersonalPostsByAccount(allGroups);
     if (!allGroups.isEmpty()) {
         emit groupsReady(allGroups);
     }

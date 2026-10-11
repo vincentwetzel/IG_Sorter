@@ -121,29 +121,38 @@ void ImageThumbnail::paintEvent(QPaintEvent* event) {
     QPainter painter(this);
     painter.setRenderHint(QPainter::SmoothPixmapTransform);
 
-    if (!m_pixmap.isNull() && m_cellSize.isValid()) {
-        // Scale to fit entirely within the cell — no cropping
-        QPixmap scaled = m_pixmap.scaled(m_cellSize, Qt::KeepAspectRatio,
+    const QRect availableRect = contentsRect();
+    if (!m_pixmap.isNull() && availableRect.isValid()) {
+        // The grid's target cell size includes the labels below this widget.
+        // Use the thumbnail widget's actual area so the image and selection
+        // marks stay inside the paint bounds after the layout allocates space.
+        QPixmap scaled = m_pixmap.scaled(availableRect.size(), Qt::KeepAspectRatio,
                                          Qt::SmoothTransformation);
-        // Center within the widget
-        int x = (width() - scaled.width()) / 2;
-        int y = (height() - scaled.height()) / 2;
+        // Center within the available paint area
+        int x = availableRect.x() + (availableRect.width() - scaled.width()) / 2;
+        int y = availableRect.y() + (availableRect.height() - scaled.height()) / 2;
         painter.drawPixmap(x, y, scaled);
-    }
 
-    if (m_selected) {
-        // Draw selection border
-        QPen pen(QColor("#0078D4"), 3);
-        painter.setPen(pen);
-        painter.setBrush(Qt::NoBrush);
-        painter.drawRect(rect().adjusted(1, 1, -1, -1));
+        if (m_selected) {
+            // Keep the selection outline attached to the photo, not the full
+            // thumbnail cell (which can contain large letterboxed margins).
+            const QRect imageRect(x, y, scaled.width(), scaled.height());
+            QPen pen(QColor("#0078D4"), 2);
+            painter.setPen(pen);
+            painter.setBrush(Qt::NoBrush);
+            painter.drawRect(imageRect.adjusted(1, 1, -1, -1));
 
-        // Draw checkmark indicator
-        painter.setPen(Qt::NoPen);
-        painter.setBrush(QColor("#0078D4"));
-        painter.drawRoundedRect(width() - 24, 4, 20, 20, 4, 4);
-        painter.setPen(QPen(Qt::white, 2));
-        painter.drawLine(width() - 20, 14, width() - 16, 18);
-        painter.drawLine(width() - 16, 18, width() - 8, 10);
+            // Place the checkmark inside the photo's top-right corner.
+            constexpr int badgeSize = 20;
+            constexpr int badgeMargin = 5;
+            const int badgeX = imageRect.right() - badgeSize - badgeMargin;
+            const int badgeY = imageRect.top() + badgeMargin;
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(QColor("#0078D4"));
+            painter.drawRoundedRect(badgeX, badgeY, badgeSize, badgeSize, 4, 4);
+            painter.setPen(QPen(Qt::white, 2));
+            painter.drawLine(badgeX + 4, badgeY + 10, badgeX + 8, badgeY + 14);
+            painter.drawLine(badgeX + 8, badgeY + 14, badgeX + 16, badgeY + 6);
+        }
     }
 }

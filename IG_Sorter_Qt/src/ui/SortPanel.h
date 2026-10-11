@@ -12,6 +12,7 @@ class QStringListModel;
 
 class QVBoxLayout;
 class QHBoxLayout;
+class QGridLayout;
 class QLabel;
 class QPushButton;
 class QLineEdit;
@@ -100,7 +101,7 @@ protected:
 private:
     void rebuildFolderButtons();
     void rebuildFavoriteButtons();
-    void trimOverflowFavoriteButtons();
+    void layoutFavoriteButtons();
     void updateGhostText();
 
     bool m_suppressGhost;  // prevent ghost from re-showing during Tab commit
@@ -119,7 +120,7 @@ private:
 
     // Quick-fill name buttons for IrlOnly sources
     QWidget*       m_favoritesWidget;
-    QHBoxLayout*   m_favoritesLayout;
+    QGridLayout*   m_favoritesLayout;
     QList<QPushButton*> m_favoriteButtons;
 
     QVector<OutputFolderConfig> m_outputFolders;

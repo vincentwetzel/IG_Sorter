@@ -6,7 +6,7 @@ IG_Sorter is a Qt 6 / C++17 desktop application. Its primary project is `IG_Sort
 
 1. **Configure** source, destination, database, batch size, and theme in Settings. These preferences are persisted with `QSettings`.
 2. **Clean output directories** concurrently across configured destinations to repair file numbering and identify names that need review against the people database.
-3. **Discover and group source files** by walking the source tree, correcting detected image-extension mismatches, parsing filenames, and resolving account handles. After discovery finishes, posts for each account are consolidated into one group before the sorting screen receives results. Exact-byte duplicate checks against output folders are deferred until the user sorts a batch.
+3. **Discover and group source files** by walking the source tree, correcting detected image-extension mismatches, parsing filenames, and resolving account handles. After discovery finishes, posts for known Personal accounts are consolidated into one group before the sorting screen receives results. Curator and IRL-only posts remain separate because each may need a different per-batch sorting name. Exact-byte duplicate checks against output folders are deferred until the user sorts a batch.
 4. **Review batches** in the preview grid. The user selects files, supplies or confirms the person name, and chooses a destination.
 5. **Review the report** for sorted/skipped counts, errors, and output-folder counts.
 6. **Find duplicates when needed** by scanning configured output folders, reviewing streamed groups, and choosing files to keep or send to the Recycle Bin.
@@ -16,7 +16,7 @@ IG_Sorter is a Qt 6 / C++17 desktop application. Its primary project is `IG_Sort
 ### Core (`IG_Sorter_Qt/src/core/`)
 
 - `FileNameParser` recognizes supported filename conventions and returns the account/source metadata used downstream.
-- `FileGrouper` scans source directories and resolves known accounts. Personal entries need a stored name to be considered known; Curator and IRL-only entries are known by type even when their name is empty, because the sorting name is entered for each batch. The interactive sorting flow uses `groupStreaming` to scan in chunks and report progress, then consolidates posts by account and emits the completed groups after discovery finishes. This lets files from multiple posts by the same account share sorting batches. Unknown and screenshot groups are kept separate. The non-streaming `group` method also consolidates posts by account.
+- `FileGrouper` scans source directories and resolves known accounts. Personal entries need a stored name to be considered known; Curator and IRL-only entries are known by type even when their name is empty, because the sorting name is entered for each batch. The interactive sorting flow uses `groupStreaming` to scan in chunks and report progress, then consolidates posts only for known Personal accounts after discovery finishes. Curator, IRL-only, unknown, and screenshot groups remain separate. The non-streaming `group` method follows the same Personal-only consolidation rule.
 - `DatabaseManager` loads and saves the selected JSON database, provides case-insensitive account lookup, and maintains an account-to-entry index.
 - `DirectoryCleanup` analyzes output directory names and performs safe numbering cleanup.
 - `ExtensionFixer` checks file content and corrects mismatched image extensions during streaming source discovery.
@@ -59,7 +59,9 @@ The parser works on the filename portion of a path. Current recognized patterns 
 | Twitter / X | `YYYYMMDD_HHMMSS.ext` | Converted timestamp and Twitter source label |
 | Android screenshot | `Screenshot_YYYYMMDD_HHMMSS_<Instagram|Snapchat|Chrome>.ext` | App source label and screenshot timestamp |
 
-Unrecognized names remain unmatched and are still available to the grouping/sorting workflow according to the grouper's fallback behavior. Posts with the same known account handle are combined after scanning, regardless of post timestamp; groups without a usable account handle remain separate. Changes to parser patterns should be reflected here and in the README when they affect first-run usage.
+Unrecognized names remain unmatched and are still available to the grouping/sorting workflow according to the grouper's fallback behavior. Posts with the same known Personal account handle are combined after scanning, regardless of post timestamp; Curator and IRL-only posts stay separate, as do groups without a usable account handle. Changes to parser patterns should be reflected here and in the README when they affect first-run usage.
+
+The sorting preview adapts to the available panel width: favorite-name quick-fill buttons wrap into rows instead of being hidden when they do not fit on the first row. Thumbnail selection outlines and checkmarks track the displayed image bounds, including when aspect-ratio padding leaves empty space inside a cell.
 
 ## Database and settings
 
