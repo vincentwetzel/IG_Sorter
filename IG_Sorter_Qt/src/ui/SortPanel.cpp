@@ -18,6 +18,7 @@
 #include <QStyleOptionFrame>
 #include <QUrl>
 #include <QVBoxLayout>
+#include "core/DatabaseManager.h"
 #include "utils/ConfigManager.h"
 
 // Custom completer that strips "(account)" suffix on insertion
@@ -214,6 +215,16 @@ SortPanel::SortPanel(QWidget* parent)
     m_unknownNameEdit->setPlaceholderText("Enter IRL name...");
     m_unknownNameEdit->setCompleter(m_completer);
     unknownLayout->addWidget(m_unknownNameEdit, 1);
+
+    connect(m_unknownNameEdit, &QLineEdit::textChanged, this, [this](const QString& text) {
+        const QString normalized = text.normalized(QString::NormalizationForm_KC);
+        if (normalized != text) {
+            const int cursorPosition = m_unknownNameEdit->cursorPosition();
+            m_unknownNameEdit->setText(normalized);
+            m_unknownNameEdit->setCursorPosition(
+                qMin(cursorPosition, static_cast<int>(normalized.size())));
+        }
+    });
 
     // Update ghost text on any text change
     connect(m_unknownNameEdit, &QLineEdit::textChanged,
@@ -492,7 +503,7 @@ bool SortPanel::isCuratorNameResolved() const {
 }
 
 QString SortPanel::getCuratorResolvedName() const {
-    return m_unknownNameEdit->text().trimmed();
+    return DatabaseManager::normalizeIrlName(m_unknownNameEdit->text());
 }
 
 int SortPanel::getUnknownAccountTypeIndex() const {

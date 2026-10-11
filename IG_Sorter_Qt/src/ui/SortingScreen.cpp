@@ -469,6 +469,11 @@ void SortingScreen::handleSortToFolder(int folderIndex) {
     QString outputDir = m_outputFolders[folderIndex].path;
 
     if (m_engine) {
+        // Do not allow Undo to inspect the history while this sort task is
+        // mutating it on the worker thread.
+        ++m_pendingSortTasks;
+        m_undoButton->setEnabled(false);
+
         // Show the selected name immediately instead of waiting for the
         // background file operations to finish. If the entire sort fails,
         // the completion handler removes this provisional usage count.
@@ -504,6 +509,7 @@ void SortingScreen::handleSortToFolder(int folderIndex) {
         auto* watcher = new QFutureWatcher<SortTaskResult>(this);
         connect(watcher, &QFutureWatcher<SortTaskResult>::finished, this,
                 [this, selected, accountHandle, accountType, capturedGroupIndex, irlName, watcher]() {
+            m_pendingSortTasks = qMax(0, m_pendingSortTasks - 1);
             SortTaskResult taskResult = watcher->result();
             SortResult result = taskResult.result;
 
@@ -696,6 +702,7 @@ void SortingScreen::handleUndo() {
 
     m_sortPanel->setEnabled(false);
     m_previewGrid->setEnabled(false);
+    m_undoButton->setEnabled(false);
     m_headerLabel->setText("Undoing last sort... Please wait.");
     auto* enginePtr = m_engine;
 
@@ -704,8 +711,31 @@ void SortingScreen::handleUndo() {
         QStringList restoredPaths = watcher->result();
         
         if (!restoredPaths.isEmpty()) {
-            m_previewGrid->clear();
-            loadNextBatch();
+            // Put the UI back on the batch containing the files that were
+            // restored. The current cursor may already have advanced since
+            // the sort completed, so blindly loading the next batch can hide
+            // the files Undo just returned to the source directory.
+            const int batchSize = qMax(1, ConfigManager::instance()->batchSize());
+            bool foundRestoredBatch = false;
+            for (const QString& restoredPath : std::as_const(restoredPaths)) {
+                for (int groupIndex = 0; groupIndex < m_groups.size(); ++groupIndex) {
+                    const int fileIndex = m_groups[groupIndex].filePaths.indexOf(restoredPath);
+                    if (fileIndex >= 0) {
+                        m_currentGroup = groupIndex;
+                        m_currentSubBatch = fileIndex / batchSize;
+                        foundRestoredBatch = true;
+                        break;
+                    }
+                }
+                if (foundRestoredBatch) break;
+            }
+
+            if (foundRestoredBatch) {
+                loadNextBatch();
+            } else {
+                m_previewGrid->clear();
+                loadNextBatch();
+            }
             updateUndoButton();
 
             int count = restoredPaths.size();
@@ -717,16 +747,20 @@ void SortingScreen::handleUndo() {
 
         m_sortPanel->setEnabled(true);
         m_previewGrid->setEnabled(true);
+        updateUndoButton();
         if (m_previewGrid->hasImages()) { updateHeader(); }
         watcher->deleteLater();
     });
 
-    QFuture<QStringList> future = QtConcurrent::run([enginePtr]() { return enginePtr->undoLastSort(); });
+    QFuture<QStringList> future = QtConcurrent::run([enginePtr]() {
+        QMutexLocker locker(&s_sortMutex);
+        return enginePtr->undoLastSort();
+    });
     watcher->setFuture(future);
 }
 
 void SortingScreen::updateUndoButton() {
-    m_undoButton->setEnabled(m_engine && m_engine->canUndo());
+    m_undoButton->setEnabled(m_pendingSortTasks == 0 && m_engine && m_engine->canUndo());
 }
 
 void SortingScreen::handleAddUnknownAccount(const QString& account,

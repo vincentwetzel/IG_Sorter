@@ -65,7 +65,7 @@ The sorting preview adapts to the available panel width: favorite-name quick-fil
 
 ## Database and settings
 
-The database path is selected by the user; there is no default private database in the repository. The JSON root is an array of objects with `name`, `account`, and `type` fields. Supported types are `personal`, `curator`, and `irl_only`. An IRL-only record has a null account. Account matching is case-insensitive.
+The database path is selected by the user; there is no default private database in the repository. The JSON root is an array of objects with `name`, `account`, and `type` fields. Supported types are `personal`, `curator`, and `irl_only`. An IRL-only record has a null account. Account matching is case-insensitive. Person names are compatibility-normalized using Unicode NFKC and trimmed when loaded, saved, added, or edited. This maps compatibility characters, including mathematical styled letters, to their ordinary equivalents so lookups and sorted filenames use a consistent name.
 
 `QSettings` stores the source directory, ordered output folder labels and paths, database path, batch size, and theme. Logs and duplicate-hash cache are placed under the platform's application data location. These runtime files are not source-controlled project content.
 
@@ -83,7 +83,7 @@ The Duplicate Finder screen remains the manual review flow: it presents likely g
 
 ## Background work and ownership
 
-Filesystem scans, grouping, cleanup, duplicate scanning, and sorting actions can be long-running. Output-directory cleanup submits one task per configured directory to a dedicated thread pool and reports progress as tasks run. Group discovery reports progress while scanning, but the sorting screen waits for the complete scan and account consolidation before presenting groups. The UI uses `QtConcurrent` and `QFutureWatcher` where appropriate, then applies results and updates widgets on the UI thread. QObject-derived components use Qt parent-child ownership. Keep worker inputs/results value-based where practical and do not access widgets from worker tasks.
+Filesystem scans, grouping, cleanup, duplicate scanning, and sorting actions can be long-running. Output-directory cleanup submits one task per configured directory to a dedicated thread pool and reports progress as tasks run. Group discovery reports progress while scanning, but the sorting screen waits for the complete scan and account consolidation before presenting groups. The UI uses `QtConcurrent` and `QFutureWatcher` where appropriate, then applies results and updates widgets on the UI thread. Sort tasks and Undo share a mutex so undo history is not read or changed while a sort is mutating it; the Undo control is disabled until pending sorts finish. After a successful undo, the preview selects the batch containing a restored source file when that file is still in the current groups. QObject-derived components use Qt parent-child ownership. Keep worker inputs/results value-based where practical and do not access widgets from worker tasks.
 
 ## Source tree
 

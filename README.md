@@ -8,6 +8,7 @@ IG_Sorter is a Qt 6 desktop application for reviewing, identifying, sorting, and
 - Groups source files by account and post, with support for Instagram downloads, Facebook and Twitter timestamps, TikTok slideshow IDs, and selected Android screenshots.
 - Combines posts from known Personal accounts after the source scan completes; Curator and IRL-only posts stay separate so each can receive its own sorting name. Image previews appear in configurable batches.
 - Supports Personal, Curator, and IRL-only database entries, unknown-account handling, and account cleanup.
+- Normalizes person names with Unicode NFKC and trims surrounding whitespace, including compatibility-styled letters such as Instagram's mathematical alphabet.
 - For Curator batches, lets you enter the person shown and choose the person’s account type beside **Add Person**; adding a person does not treat the curator’s source account as the person’s account.
 - Updates favorite-name quick-fill counts as sorting starts, and rolls back the update if the entire sort action fails. Favorite buttons reflow into additional rows when the sorting panel is narrow.
 - Recognizes Curator and IRL-only source accounts without requiring a stored name, and lets account cleanup save edited entries together.

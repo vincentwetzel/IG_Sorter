@@ -79,6 +79,7 @@ private:
     QList<FileGroup>  m_groups;
     int               m_currentGroup;
     int               m_currentSubBatch;
+    int               m_pendingSortTasks = 0;
     bool              m_groupingComplete = true;
     bool              m_waitingForGroups = false;
 

@@ -51,6 +51,10 @@ public:
                                    const QString& newName, AccountType newType);
     bool        hasIrlName(const QString& name) const;
 
+    // Convert compatibility characters (such as Instagram's mathematical
+    // alphabet) to their ordinary Unicode equivalents.
+    static QString normalizeIrlName(const QString& name);
+
     static QString accountTypeToString(AccountType type);
     static AccountType stringToAccountType(const QString& str);
 

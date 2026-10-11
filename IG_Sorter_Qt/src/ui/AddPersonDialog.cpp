@@ -6,6 +6,7 @@
 #include <QLineEdit>
 #include <QComboBox>
 #include <QPushButton>
+#include "core/DatabaseManager.h"
 
 AddPersonDialog::AddPersonDialog(const QString& personName, const QString& accountHandle,
                                  AccountType suggestedType, QWidget* parent)
@@ -45,6 +46,15 @@ void AddPersonDialog::setupUI() {
 
     m_irlNameEdit = new QLineEdit(this);
     m_irlNameEdit->setPlaceholderText("IRL name (optional)");
+    connect(m_irlNameEdit, &QLineEdit::textChanged, this, [this](const QString& text) {
+        const QString normalized = text.normalized(QString::NormalizationForm_KC);
+        if (normalized != text) {
+            const int cursorPosition = m_irlNameEdit->cursorPosition();
+            m_irlNameEdit->setText(normalized);
+            m_irlNameEdit->setCursorPosition(
+                qMin(cursorPosition, static_cast<int>(normalized.size())));
+        }
+    });
     formLayout->addRow("Name:", m_irlNameEdit);
 
     m_accountEdit = new QLineEdit(this);
@@ -72,7 +82,7 @@ void AddPersonDialog::setupUI() {
 }
 
 QString AddPersonDialog::irlName() const {
-    return m_irlNameEdit->text().trimmed();
+    return DatabaseManager::normalizeIrlName(m_irlNameEdit->text());
 }
 
 QString AddPersonDialog::accountHandle() const {

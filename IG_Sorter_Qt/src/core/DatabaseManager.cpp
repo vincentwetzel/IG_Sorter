@@ -40,7 +40,7 @@ bool DatabaseManager::load() {
         QJsonObject obj = arr[i].toObject();
 
         PersonEntry entry;
-        entry.irlName = obj.value(QStringLiteral("name")).toString();
+        entry.irlName = normalizeIrlName(obj.value(QStringLiteral("name")).toString());
 
         if (obj.contains(QStringLiteral("account")) && !obj.value(QStringLiteral("account")).isNull()) {
             entry.account = obj.value(QStringLiteral("account")).toString().toLower();
@@ -65,7 +65,7 @@ bool DatabaseManager::save() {
 
     for (const auto& entry : m_entries) {
         QJsonObject obj;
-        obj[QStringLiteral("name")] = entry.irlName;
+        obj[QStringLiteral("name")] = normalizeIrlName(entry.irlName);
 
         if (entry.type == AccountType::IrlOnly) {
             obj[QStringLiteral("account")] = QJsonValue::Null;
@@ -127,7 +127,7 @@ bool DatabaseManager::addEntry(const QString& account, const QString& irlName, A
 
     PersonEntry entry;
     entry.account = lowerAccount.isEmpty() ? QString() : lowerAccount;
-    entry.irlName = irlName;
+    entry.irlName = normalizeIrlName(irlName);
     entry.type = type;
 
     if (!entry.account.isEmpty()) {
@@ -186,7 +186,7 @@ bool DatabaseManager::updateEntryByIndex(int index, const QString& newAccount,
     QString oldAccount = m_entries[index].account;
     QString newAccountLower = newAccount.isEmpty() ? QString() : newAccount.toLower();
     m_entries[index].account = newAccountLower;
-    m_entries[index].irlName = newName;
+    m_entries[index].irlName = normalizeIrlName(newName);
     m_entries[index].type = newType;
 
     LogManager::instance()->info(
@@ -210,12 +210,17 @@ bool DatabaseManager::updateEntryByIndex(int index, const QString& newAccount,
 }
 
 bool DatabaseManager::hasIrlName(const QString& name) const {
+    const QString normalizedName = normalizeIrlName(name);
     for (const auto& entry : m_entries) {
-        if (entry.irlName.compare(name, Qt::CaseInsensitive) == 0) {
+        if (normalizeIrlName(entry.irlName).compare(normalizedName, Qt::CaseInsensitive) == 0) {
             return true;
         }
     }
     return false;
+}
+
+QString DatabaseManager::normalizeIrlName(const QString& name) {
+    return name.normalized(QString::NormalizationForm_KC).trimmed();
 }
 
 QString DatabaseManager::accountTypeToString(AccountType type) {
