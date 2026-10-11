@@ -474,6 +474,15 @@ void SortingScreen::handleSortToFolder(int folderIndex) {
     QString outputDir = m_outputFolders[folderIndex].path;
 
     if (m_engine) {
+        // Show the selected name immediately instead of waiting for the
+        // background file operations to finish. If the entire sort fails,
+        // the completion handler removes this provisional usage count.
+        const bool hasQuickFillName = !irlName.trimmed().isEmpty();
+        if (hasQuickFillName) {
+            m_nameCounts[irlName]++;
+            updateFavoriteButtons();
+        }
+
         // Release image handles from thumbnails before moving files
         // This frees any file handles held by Qt's image readers on Windows
         m_previewGrid->releaseImages(selected);
@@ -514,6 +523,19 @@ void SortingScreen::handleSortToFolder(int folderIndex) {
             m_errors += result.errors;
             m_errorMessages.append(result.errorMessages);
 
+            // Remove the provisional name entry if the whole sort failed.
+            if (actualSorted == 0 && !irlName.trimmed().isEmpty()) {
+                auto countIt = m_nameCounts.find(irlName);
+                if (countIt != m_nameCounts.end()) {
+                    if (countIt.value() <= 1) {
+                        m_nameCounts.erase(countIt);
+                    } else {
+                        --countIt.value();
+                    }
+                }
+                updateFavoriteButtons();
+            }
+
             // Track by account type
             QString typeKey = DatabaseManager::accountTypeToString(accountType);
             m_filesByAccountType[typeKey] += result.filesSorted;
@@ -523,7 +545,6 @@ void SortingScreen::handleSortToFolder(int folderIndex) {
                 accountType == AccountType::IrlOnly ||
                 accountHandle == "Unknown") {
 
-                m_nameCounts[irlName]++;
                 if (capturedGroupIndex >= 0 && capturedGroupIndex < m_groups.size()) {
                     m_groups[capturedGroupIndex].irlName = irlName;
                     m_groups[capturedGroupIndex].isKnown = true;
@@ -533,7 +554,6 @@ void SortingScreen::handleSortToFolder(int folderIndex) {
                 if (m_currentGroup == capturedGroupIndex) {
                     m_sortPanel->setAccountInfo(accountHandle, irlName, true, accountType);
                 }
-                updateFavoriteButtons();
             }
 
             // Show error if any files failed to sort

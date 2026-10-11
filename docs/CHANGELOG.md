@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Continue button theme styling**: added matching enabled, hover, and pressed states in the light and dark themes.
+- **Favorite-name quick-fill feedback**: the selected name's usage count updates as soon as sorting starts, then rolls back if every selected file operation fails.
 - **Output cleanup concurrency**: configured output directories are cleaned in parallel on a dedicated thread pool, with per-directory progress and completion updates.
 - **Account cleanup workflow**: replaced the unused selection controls with a single Save All action that applies edited rows and writes the database once.
 - **Screen navigation**: added screen history and mouse Back-button navigation, while returning to the menu resets the history.

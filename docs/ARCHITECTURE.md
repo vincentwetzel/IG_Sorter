@@ -30,7 +30,7 @@ IG_Sorter is a Qt 6 / C++17 desktop application. Its primary project is `IG_Sort
 - `MenuScreen` provides entry points to sorting, account cleanup, duplicate finding, and Settings.
 - `CleanupScreen` presents cleanup progress and unresolved names.
 - `CleanUpAccountsScreen` supports reviewing account entries without names, editing their names and types, and saving all rows together.
-- `SortingScreen` presents groups and sub-batches, and coordinates asynchronous move, delete, and undo actions.
+- `SortingScreen` presents groups and sub-batches, coordinates asynchronous move, delete, and undo actions, and updates favorite-name quick-fill counts as a sort starts. If the whole sort action fails, it removes that provisional count; a partial success keeps the count.
 - `ImagePreviewGrid`, `ImageThumbnail`, `ThumbnailWithLabel`, and `FlowLayout` implement the responsive preview surface.
 - `SortPanel` provides destination, selection, name, and unknown-account controls.
 - `AddPersonDialog` creates person/account entries when needed.
