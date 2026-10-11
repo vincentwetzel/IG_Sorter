@@ -3,7 +3,6 @@
 #include <utility>
 
 #include <QComboBox>
-#include <QFormLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -60,8 +59,9 @@ void ResolutionRow::apply() {
             .arg(m_irlName, account, DatabaseManager::accountTypeToString(type)));
 
     // Check for duplicate account
-    if (!account.isEmpty() && m_db->hasAccount(account)) {
-        QString existingName = m_db->getIrlName(account.toLower());
+    const PersonEntry existingEntry = account.isEmpty() ? PersonEntry() : m_db->getEntry(account);
+    if (!existingEntry.account.isEmpty()) {
+        const QString& existingName = existingEntry.irlName;
         LogManager::instance()->warning(
             QString("Account \"%1\" already exists in DB, associated with \"%2\"")
                 .arg(account, existingName));
@@ -101,7 +101,7 @@ void ResolutionRow::apply() {
 
 // ─── CleanupScreen ───────────────────────────────────────────────
 CleanupScreen::CleanupScreen(QWidget* parent)
-    : QWidget(parent), m_pendingDb(nullptr)
+    : QWidget(parent)
 {
     m_layout = new QVBoxLayout(this);
     m_layout->setSpacing(20);
@@ -248,9 +248,6 @@ void CleanupScreen::setDirectoryRenamed(const QString& dir, int filesRenamed) {
 }
 
 void CleanupScreen::showUnresolvedIssues(const QStringList& unknownNames, DatabaseManager* db) {
-    m_pendingDb = db;
-    m_pendingUnknownNames = unknownNames;
-
     m_resolutionWidget->setUpdatesEnabled(false);
 
     // Clear everything from the resolution layout — title labels from previous calls

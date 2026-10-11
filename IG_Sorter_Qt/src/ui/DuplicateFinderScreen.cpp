@@ -652,8 +652,7 @@ void DuplicateFinderScreen::handleSkip() {
     advanceToNextGroup();
 }
 
-void DuplicateFinderScreen::handleSelectionChanged(int count) {
-    Q_UNUSED(count);
+void DuplicateFinderScreen::handleSelectionChanged() {
     updateInfoLabels();
 }
 

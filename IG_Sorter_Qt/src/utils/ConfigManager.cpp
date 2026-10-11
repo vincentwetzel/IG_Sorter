@@ -1,6 +1,5 @@
 #include "utils/ConfigManager.h"
 #include <QSettings>
-#include <QStandardPaths>
 
 ConfigManager* ConfigManager::s_instance = nullptr;
 

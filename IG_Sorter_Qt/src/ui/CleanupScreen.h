@@ -2,6 +2,7 @@
 
 #include <QWidget>
 #include <QMap>
+#include <QList>
 #include <QStringList>
 
 class QVBoxLayout;
@@ -20,7 +21,6 @@ public:
     ResolutionRow(const QString& irlName, DatabaseManager* db,
                   QVBoxLayout* parentLayout, QWidget* parent = nullptr);
     void apply();
-    QString irlName() const { return m_irlName; }
 
 signals:
     void resolved();
@@ -62,8 +62,6 @@ private:
     QWidget*             m_resolutionWidget;
     QVBoxLayout*         m_resolutionLayout;
     QList<ResolutionRow*> m_resolutionRows;
-    DatabaseManager*     m_pendingDb;
-    QStringList          m_pendingUnknownNames;
 
     QHBoxLayout*         m_buttonLayout;
     QPushButton*         m_menuButton;

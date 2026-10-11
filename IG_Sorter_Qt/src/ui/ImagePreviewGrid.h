@@ -2,6 +2,7 @@
 
 #include <QWidget>
 #include <QList>
+#include <QStringList>
 
 class QGridLayout;
 
@@ -19,8 +20,6 @@ public:
     void        releaseImages(const QStringList& filePaths);
     void        clear();
     bool        hasImages() const;
-
-    void setBatchInfo(const QString& current, const QString& total);
 
     // Select/deselect all thumbnails
     void selectAll();

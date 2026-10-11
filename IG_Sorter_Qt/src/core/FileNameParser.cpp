@@ -3,19 +3,14 @@
 #include <QFileInfo>
 #include <QDateTime>
 
-// Extract timestamp from Android screenshot filename
-// Pattern: Screenshot_YYYYMMDD_HHMMSS_App.ext
-static bool parseAndroidScreenshot(const QString& fileName,
-                                    ParsedResult& result,
-                                    const QString& appLabel,
-                                    SourceType sourceEnum,
-                                    const QString& accountLabel) {
-    QRegularExpression androidRegex(
-        "^Screenshot_(\\d{4})(\\d{2})(\\d{2})_(\\d{2})(\\d{2})(\\d{2})_"
-        + QRegularExpression::escape(appLabel) + "\\.");
+// Extract timestamp and app from an Android screenshot filename.
+static bool parseAndroidScreenshot(const QString& fileName, ParsedResult& result) {
+    static const QRegularExpression androidRegex(
+        R"(^Screenshot_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})_(Instagram|Snapchat|Chrome)\.)");
     QRegularExpressionMatch androidMatch = androidRegex.match(fileName);
     if (androidMatch.hasMatch()) {
-        result.accountHandle = accountLabel;
+        const QString appLabel = androidMatch.captured(7);
+        result.accountHandle = appLabel;
         result.postDate = QString("%1-%2-%3")
             .arg(androidMatch.captured(1))
             .arg(androidMatch.captured(2))
@@ -27,7 +22,13 @@ static bool parseAndroidScreenshot(const QString& fileName,
         result.postTimestamp = result.postDate + "_" + result.postTime;
         result.sequenceNumber = -1;
         result.sourceType = "android_screenshot_" + appLabel.toLower();
-        result.sourceEnum = sourceEnum;
+        if (appLabel == "Instagram") {
+            result.sourceEnum = SourceType::AndroidScreenshot_Instagram;
+        } else if (appLabel == "Snapchat") {
+            result.sourceEnum = SourceType::AndroidScreenshot_Snapchat;
+        } else {
+            result.sourceEnum = SourceType::AndroidScreenshot_Chrome;
+        }
         result.matched = true;
         return true;
     }
@@ -46,7 +47,7 @@ ParsedResult FileNameParser::parse(const QString& filePath) {
     // Capture groups: (1)=account, (2)=date, (3)=time, (4)=sequence (may be empty)
     // Note: .* at end required because Qt's match() does full-string matching
     // Use greedy (.+) to capture account handles that may contain underscores
-    QRegularExpression instaloaderRegex(
+    static const QRegularExpression instaloaderRegex(
         "(.+)(?=_"
         "\\d{4}-\\d{2}-\\d{2})_"
         "(\\d{4}-\\d{2}-\\d{2})_"
@@ -67,7 +68,7 @@ ParsedResult FileNameParser::parse(const QString& filePath) {
     } else {
         // TikTok slideshow pattern: 32-char hex string.ext
         // e.g. "6bf415004e6f7b395e9b3b14963a6e51.webp"
-        QRegularExpression tiktokRegex("^([0-9a-fA-F]{32})\\.");
+        static const QRegularExpression tiktokRegex("^([0-9a-fA-F]{32})\\.");
         QRegularExpressionMatch tiktokMatch = tiktokRegex.match(fileName);
         if (tiktokMatch.hasMatch()) {
             result.accountHandle = "TikTok Slideshow";
@@ -79,7 +80,7 @@ ParsedResult FileNameParser::parse(const QString& filePath) {
         } else {
             // Facebook download pattern: FB_IMG_<unix_timestamp>.ext
             // e.g. "FB_IMG_1752582112941.jpg"
-            QRegularExpression fbRegex("^FB_IMG_(\\d{13})\\.");
+            static const QRegularExpression fbRegex("^FB_IMG_(\\d{13})\\.");
             QRegularExpressionMatch fbMatch = fbRegex.match(fileName);
             if (fbMatch.hasMatch()) {
                 result.accountHandle = "Facebook";
@@ -94,7 +95,7 @@ ParsedResult FileNameParser::parse(const QString& filePath) {
             } else {
                 // Twitter/X download pattern: YYYYMMDD_HHMMSS.ext
                 // e.g. "20250902_193054.jpg"
-                QRegularExpression twitterRegex(
+                static const QRegularExpression twitterRegex(
                     "^(\\d{4})(\\d{2})(\\d{2})_(\\d{2})(\\d{2})(\\d{2})\\.");
                 QRegularExpressionMatch twitterMatch = twitterRegex.match(fileName);
                 if (twitterMatch.hasMatch()) {
@@ -119,19 +120,7 @@ ParsedResult FileNameParser::parse(const QString& filePath) {
 
     // Android screenshot patterns: Screenshot_YYYYMMDD_HHMMSS_App.ext
     if (!result.matched) {
-        if (parseAndroidScreenshot(fileName, result, "Instagram",
-                                     SourceType::AndroidScreenshot_Instagram,
-                                     "Instagram")) {
-            return result;
-        }
-        if (parseAndroidScreenshot(fileName, result, "Snapchat",
-                                     SourceType::AndroidScreenshot_Snapchat,
-                                     "Snapchat")) {
-            return result;
-        }
-        if (parseAndroidScreenshot(fileName, result, "Chrome",
-                                     SourceType::AndroidScreenshot_Chrome,
-                                     "Chrome")) {
+        if (parseAndroidScreenshot(fileName, result)) {
             return result;
         }
     }

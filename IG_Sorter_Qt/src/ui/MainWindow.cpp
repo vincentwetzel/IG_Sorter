@@ -13,7 +13,6 @@
 #include "utils/ConfigManager.h"
 #include "utils/ThemeManager.h"
 #include "utils/LogManager.h"
-#include "utils/FileUtils.h"
 #include <QStackedWidget>
 #include <QStatusBar>
 #include <QApplication>
@@ -129,56 +128,14 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_menuScreen, &MenuScreen::cleanUpAccountsClicked,
             this, &MainWindow::showCleanUpAccountsScreen);
 
-    // SortingScreen -> ReportScreen when done
+    // SortingScreen -> ReportScreen when done or when the user finishes early.
     connect(m_sortingScreen, &SortingScreen::allBatchesDone,
-            this, [this]() {
-                // Build report and show it
-                SortReportData report;
-                report.filesSorted = m_sortingScreen->totalFilesSorted();
-                report.filesSkipped = m_sortingScreen->totalFilesSkipped();
-                report.errors = m_sortingScreen->totalErrors();
-                report.errorMessages = m_sortingScreen->errorMessages();
-
-                // Count files in output dirs
-                for (const auto& folder : ConfigManager::instance()->outputFolders()) {
-                    QDir dir(folder.path);
-                    if (dir.exists()) {
-                        int fileCount = dir.entryList(QDir::Files | QDir::NoDotAndDotDot).size();
-                        report.directoryFileCounts[folder.name] = fileCount;
-                    }
-                }
-
-                report.newAccountsAdded = m_sortingScreen->newAccountsAdded();
-                report.filesByAccountType = m_sortingScreen->filesByAccountType();
-
-                m_reportScreen->setReport(report);
-                showReportScreen();
-            });
+            this, &MainWindow::showReportScreen);
 
     connect(m_sortingScreen, &SortingScreen::backClicked,
             this, &MainWindow::showMenuScreen);
     connect(m_sortingScreen, &SortingScreen::finishClicked,
-            this, [this]() {
-                // Build report early if user clicks Finish before all batches done
-                SortReportData report;
-                report.filesSorted = m_sortingScreen->totalFilesSorted();
-                report.filesSkipped = m_sortingScreen->totalFilesSkipped();
-                report.errors = m_sortingScreen->totalErrors();
-                report.errorMessages = m_sortingScreen->errorMessages();
-
-                for (const auto& folder : ConfigManager::instance()->outputFolders()) {
-                    QDir dir(folder.path);
-                    if (dir.exists()) {
-                        int fileCount = dir.entryList(QDir::Files | QDir::NoDotAndDotDot).size();
-                        report.directoryFileCounts[folder.name] = fileCount;
-                    }
-                }
-                report.newAccountsAdded = m_sortingScreen->newAccountsAdded();
-                report.filesByAccountType = m_sortingScreen->filesByAccountType();
-
-                m_reportScreen->setReport(report);
-                showReportScreen();
-            });
+            this, &MainWindow::showReportScreen);
 
     // ReportScreen -> MenuScreen or Settings
     connect(m_reportScreen, &ReportScreen::doneClicked,
@@ -365,6 +322,23 @@ void MainWindow::showSortingScreen() {
 }
 
 void MainWindow::showReportScreen() {
+    SortReportData report;
+    report.filesSorted = m_sortingScreen->totalFilesSorted();
+    report.filesSkipped = m_sortingScreen->totalFilesSkipped();
+    report.errors = m_sortingScreen->totalErrors();
+    report.errorMessages = m_sortingScreen->errorMessages();
+
+    for (const auto& folder : ConfigManager::instance()->outputFolders()) {
+        QDir dir(folder.path);
+        if (dir.exists()) {
+            report.directoryFileCounts[folder.name] =
+                dir.entryList(QDir::Files | QDir::NoDotAndDotDot).size();
+        }
+    }
+
+    report.newAccountsAdded = m_sortingScreen->newAccountsAdded();
+    report.filesByAccountType = m_sortingScreen->filesByAccountType();
+    m_reportScreen->setReport(report);
     navigateToScreen(m_reportScreen);
     m_statusBar->showMessage("Sorting complete.");
 }
@@ -502,12 +476,7 @@ void MainWindow::startSortingPipeline() {
             this, [this, cleanupWatcher]() {
                 CleanupReport report = cleanupWatcher->result();
 
-                QStringList unknownNames;
-                for (const auto& issue : report.unresolvedIssues) {
-                    if (!unknownNames.contains(issue.personName)) {
-                        unknownNames.append(issue.personName);
-                    }
-                }
+                const QStringList& unknownNames = report.unresolvedNames;
 
                 if (!unknownNames.isEmpty()) {
                     m_cleanupScreen->showUnresolvedIssues(unknownNames, m_db);

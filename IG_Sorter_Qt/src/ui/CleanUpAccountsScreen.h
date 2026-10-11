@@ -20,12 +20,6 @@ public:
     explicit AccountEditRow(int dbIndex, const QString& account, const QString& currentName,
                             DatabaseManager* db, QWidget* parent = nullptr);
     bool apply();
-    QString account() const { return m_account; }
-    bool hasChanges() const;
-    bool wasSaved() const { return m_wasSaved; }
-
-signals:
-    void saved();
 
 private:
     int              m_dbIndex;
@@ -34,9 +28,6 @@ private:
     QLineEdit*       m_nameEdit;
     QComboBox*       m_typeCombo;
     QPushButton*     m_saveButton;
-    QString          m_originalName;
-    int              m_originalTypeIndex;
-    bool             m_wasSaved = false;
 };
 
 class CleanUpAccountsScreen : public QWidget {

@@ -41,9 +41,8 @@ public:
     bool        load();
     bool        save();
     bool        hasAccount(const QString& handle) const;
-    QString     getIrlName(const QString& handle) const;
     PersonEntry getEntry(const QString& handle) const;
-    QList<PersonEntry> allEntries() const;
+    const QList<PersonEntry>& allEntries() const;
     bool        addEntry(const QString& account, const QString& irlName, AccountType type);
     bool        removeEntry(const QString& account);
     bool        updateEntry(const QString& oldAccount, const QString& newAccount,

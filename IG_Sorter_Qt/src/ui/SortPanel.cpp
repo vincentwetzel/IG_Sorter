@@ -62,7 +62,6 @@ void GhostLineEdit::clearGhost() {
         update();
     }
 }
-
 void GhostLineEdit::updateGhostGeometry() {
     if (m_ghost.isEmpty() || text().isEmpty()) {
         m_ghostRect = QRect();
@@ -267,7 +266,13 @@ SortPanel::SortPanel(QWidget* parent)
         if (m_accountType == AccountType::Curator || m_accountType == AccountType::IrlOnly) {
             // Curator or download source (Twitter, TikTok, etc.) — resolve name,
             // let SortingScreen handle DB prompt if needed
-            emit curatorResolvedName(irlName);
+            AccountType selectedType = AccountType::IrlOnly;
+            switch (m_unknownTypeCombo->currentIndex()) {
+            case 1: selectedType = AccountType::Curator; break;
+            case 2: selectedType = AccountType::IrlOnly; break;
+            default: selectedType = AccountType::Personal; break;
+            }
+            emit curatorResolvedName(irlName, selectedType);
         } else {
             // Unknown personal: add to database
             AccountType type = AccountType::Personal;
@@ -325,7 +330,7 @@ void SortPanel::refreshCompleter() {
     }
 
     // Build entries per-account so every account handle is searchable
-    const auto entries = m_db->allEntries();
+    const auto& entries = m_db->allEntries();
     QList<QPair<QString, QString>> pairs;
     pairs.reserve(entries.size());
     for (const auto& entry : entries) {
@@ -356,10 +361,6 @@ void SortPanel::refreshCompleter() {
     }
 
     m_completerModel->setStringList(m_allCompleterEntries);
-}
-
-bool SortPanel::eventFilter(QObject* watched, QEvent* event) {
-    return QWidget::eventFilter(watched, event);
 }
 
 void SortPanel::resizeEvent(QResizeEvent* event) {
@@ -412,7 +413,7 @@ void SortPanel::setAccountInfo(const QString& accountHandle,
         } else {
             m_unknownNameEdit->clear();
         }
-        m_unknownTypeCombo->hide();
+        m_unknownTypeCombo->show();
         m_openInstagramButton->show();
         m_unknownAddButton->setText("Add Person");
         m_unknownAddButton->setObjectName("addPersonButton");
@@ -470,21 +471,10 @@ void SortPanel::clearNameInput() {
     m_unknownNameEdit->clearGhost();
 }
 
-// Set the name input field to a specific value
-void SortPanel::setNameInput(const QString& name) {
-    m_unknownNameEdit->setText(name);
-    m_unknownNameEdit->clearGhost();
-}
-
 void SortPanel::clearSelections() {
     for (auto* btn : m_folderButtons) {
         btn->setChecked(false);
     }
-}
-
-void SortPanel::updateSelectedCount(int count) {
-    Q_UNUSED(count);
-    // No-op — counter label removed
 }
 
 void SortPanel::updateSelectAllButtonText(bool allSelected) {
@@ -627,9 +617,4 @@ void SortPanel::layoutFavoriteButtons() {
         m_favoritesLayout->addWidget(btn, row, column++);
         usedWidth += (column > 1 ? spacing : 0) + buttonWidth;
     }
-}
-
-void SortPanel::rebuildFavoriteButtons() {
-    // Placeholder — called when favorites need refreshing
-    // Actual data is managed externally via setQuickFillNames()
 }

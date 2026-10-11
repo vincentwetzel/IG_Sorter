@@ -272,11 +272,6 @@ bool ImagePreviewGrid::hasImages() const {
     return !m_items.isEmpty();
 }
 
-void ImagePreviewGrid::setBatchInfo(const QString& current, const QString& total) {
-    Q_UNUSED(current);
-    Q_UNUSED(total);
-}
-
 void ImagePreviewGrid::selectAll() {
     for (auto* item : std::as_const(m_items)) {
         item->thumbnail()->setSelected(true);

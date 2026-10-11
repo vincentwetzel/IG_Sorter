@@ -3,15 +3,12 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
-#include <QVector>
 #include "DatabaseManager.h"
 #include "DirectoryCleanup.h"
 #include "FileGrouper.h"
-#include "ExtensionFixer.h"
 
 struct SortResult {
     int filesSorted = 0;
-    int filesSkipped = 0;
     int duplicatesRemoved = 0;
     int errors = 0;
     QStringList errorMessages;
@@ -39,9 +36,7 @@ public:
 
     // Called by UI when user assigns a selection of files to an output dir
     SortResult sortFiles(const QStringList& filePaths,
-                         const QString& accountHandle,
                          const QString& irlName,
-                         AccountType accountType,
                          const QString& outputDir,
                          const QString& outputFolderName);
 
@@ -50,19 +45,12 @@ public:
     QStringList undoLastSort();
     bool canUndo() const { return !m_sortHistory.isEmpty(); }
 
-    // Invalidate the grouping cache (call when database changes)
-    void invalidateCache();
-
     // Update cached groups for a specific account (call after adding account to DB)
     void updateCacheForAccount(const QString& accountHandle);
-
-    const QString&    sourceDir() const { return m_sourceDir; }
-    const QStringList& outputDirs() const { return m_outputDirs; }
 
 signals:
     void cleanupProgress(const QString& dir, int current, int total);
     void cleanupDirectoryDone(const QString& dir, int filesRenamed);
-    void groupProgress(int current, int total);
     void groupsReady(const QList<FileGroup>& groups);
 
 private:

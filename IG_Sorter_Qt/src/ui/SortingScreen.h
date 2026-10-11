@@ -2,7 +2,9 @@
 
 #include <QWidget>
 #include <QList>
+#include <QMap>
 #include <QStringList>
+#include <QVector>
 #include "core/FileGrouper.h"
 #include "core/Types.h"
 
@@ -14,7 +16,6 @@ class SortPanel;
 class QPushButton;
 class DatabaseManager;
 class SorterEngine;
-class DatabaseManager;
 
 struct OutputFolderConfig;
 
@@ -57,14 +58,12 @@ private slots:
     void handleAddUnknownAccount(const QString& account, const QString& irlName,
                                  AccountType type);
     void handleOpenInstagram(const QString& account);
-    void handleCuratorResolvedName(const QString& irlName);
+    void handleCuratorResolvedName(const QString& irlName, AccountType accountType);
 
 private:
     void updateHeader();
-    void recordNameUsed(const QString& name);
     void updateFavoriteButtons();
     void updateUndoButton();
-    QString getCurrentSourceType() const;
     // Update all groups matching a newly-added account
     void updateGroupsForNewAccount(const QString& accountHandle);
 
@@ -97,5 +96,4 @@ private:
 
     // Quick-fill name tracking (leaderboard for IrlOnly sources)
     QMap<QString, int> m_nameCounts;   // IRL name → usage count
-    QString m_currentSourceType;       // "twitter", "tiktok_slideshow", etc.
 };

@@ -2,7 +2,6 @@
 
 #include <QObject>
 #include <QString>
-#include <QDateTime>
 #include <QFile>
 #include <QRecursiveMutex>
 
@@ -32,12 +31,10 @@ public:
 
     // Convenience methods for common operations
     void logFileMoved(const QString& src, const QString& dest, qint64 sizeBytes);
-    void logFileDeleted(const QString& path);
     void logFileRenamed(const QString& oldPath, const QString& newPath);
     void logFileSkipped(const QString& path, const QString& reason);
     void logError(const QString& path, const QString& error);
     void logDirectoryCleaned(const QString& dir, int filesRenamed);
-    void logSortComplete(int sorted, int skipped, int errors);
 
     // Get the current log file path (useful for displaying to user)
     QString currentLogFile() const;
@@ -45,7 +42,6 @@ public:
 private:
     static LogManager* s_instance;
 
-    void rotateIfNeeded();
     void cleanupOldLogs();
     QString timestamp() const;
     QString levelString(LogLevel level) const;

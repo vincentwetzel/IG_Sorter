@@ -17,7 +17,7 @@
 AccountEditRow::AccountEditRow(int dbIndex, const QString& account, const QString& currentName,
                                DatabaseManager* db, QWidget* parent)
     : QWidget(parent), m_dbIndex(dbIndex), m_account(account), m_db(db),
-      m_originalName(currentName)
+      m_nameEdit(nullptr), m_typeCombo(nullptr), m_saveButton(nullptr)
 {
     auto* layout = new QHBoxLayout(this);
     layout->setContentsMargins(8, 4, 8, 4);
@@ -53,16 +53,13 @@ AccountEditRow::AccountEditRow(int dbIndex, const QString& account, const QStrin
     default: break;
     }
     m_typeCombo->setCurrentIndex(typeIndex);
-    m_originalTypeIndex = typeIndex;
     layout->addWidget(m_typeCombo);
 
     // Save button
     m_saveButton = new QPushButton("Save", this);
     m_saveButton->setFixedWidth(100);
     connect(m_saveButton, &QPushButton::clicked, this, [this]() {
-        if (apply()) {
-            emit saved();
-        }
+        apply();
     });
     layout->addWidget(m_saveButton);
 }
@@ -83,10 +80,6 @@ bool AccountEditRow::apply() {
 
     bool ok = m_db->updateEntryByIndex(m_dbIndex, m_account, newName, newType);
     if (ok) {
-        m_wasSaved = true;
-        m_originalName = newName;
-        m_originalTypeIndex = m_typeCombo->currentIndex();
-
         // Visual feedback — green button with checkmark
         m_saveButton->setText("✓ Saved");
         m_saveButton->setStyleSheet(
@@ -94,11 +87,6 @@ bool AccountEditRow::apply() {
         m_saveButton->setEnabled(false);
     }
     return ok;
-}
-
-bool AccountEditRow::hasChanges() const {
-    return m_nameEdit->text().trimmed() != m_originalName ||
-           m_typeCombo->currentIndex() != m_originalTypeIndex;
 }
 
 // ─── CleanUpAccountsScreen ──────────────────────────────────────────────────
@@ -186,7 +174,7 @@ void CleanUpAccountsScreen::refreshAccountsList() {
 void CleanUpAccountsScreen::buildAccountsList() {
     if (!m_db) return;
 
-    auto entries = m_db->allEntries();
+    const auto& entries = m_db->allEntries();
     int emptyCount = 0;
 
     for (int i = 0; i < entries.size(); ++i) {

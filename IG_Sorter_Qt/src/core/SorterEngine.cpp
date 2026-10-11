@@ -2,14 +2,12 @@
 #include "core/DatabaseManager.h"
 #include "utils/FileUtils.h"
 #include "utils/LogManager.h"
-#include <algorithm>
 #include <QCryptographicHash>
 #include <QFile>
 #include <QDir>
-#include <QDirIterator>
 #include <QFileInfo>
 #include <QFuture>
-#include <QMutex>
+#include <QSet>
 #include <QThreadPool>
 #include <QtConcurrent>
 
@@ -124,13 +122,20 @@ CleanupReport SorterEngine::runCleanup() {
     // at the same time. The dedicated pool is drained before it goes out of scope.
     cleanupPool.waitForDone();
 
+    QSet<QString> unresolvedNames;
     for (int i = 0; i < m_outputDirs.size(); ++i) {
         const QString& dir = m_outputDirs[i];
         const CleanupReport report = cleanupFutures[i].result();
 
         combinedReport.totalDirectoriesScanned += report.totalDirectoriesScanned;
         combinedReport.totalFilesRenamed += report.totalFilesRenamed;
-        combinedReport.unresolvedIssues.append(report.unresolvedIssues);
+        for (const QString& name : report.unresolvedNames) {
+            const QString normalizedName = name.toCaseFolded();
+            if (!unresolvedNames.contains(normalizedName)) {
+                unresolvedNames.insert(normalizedName);
+                combinedReport.unresolvedNames.append(name);
+            }
+        }
         LogManager::instance()->logDirectoryCleaned(dir, report.totalFilesRenamed);
 
         // Signal completion on the engine's thread.
@@ -169,14 +174,9 @@ QList<FileGroup> SorterEngine::groupFiles() {
 }
 
 SortResult SorterEngine::sortFiles(const QStringList& filePaths,
-                                   const QString& accountHandle,
                                    const QString& irlName,
-                                   AccountType accountType,
                                    const QString& outputDir,
                                    const QString& outputFolderName) {
-    Q_UNUSED(accountHandle);
-    Q_UNUSED(accountType);
-
     if (irlName.trimmed().isEmpty()) {
         SortResult errResult;
         errResult.errors = filePaths.size();
@@ -189,74 +189,65 @@ SortResult SorterEngine::sortFiles(const QStringList& filePaths,
         QString("Sorting %1 files to %2 as '%3'")
             .arg(filePaths.size()).arg(outputDir).arg(irlName));
 
-    // Shared state protected by mutex
-    QMutex mutex;
+    // Results and name reservations follow the input file order.
     SortResult result;
     QList<SortOperation::FileMove> fileMoves;
     DirCache dirCache;
+    QSet<QString> usedNames = FileUtils::existingBaseNames(outputDir);
 
-    // Run each file move in its own thread.
-    // The name generation + file move is done under the mutex to avoid
-    // two threads generating the same filename.
-    QFutureSynchronizer<void> sync;
+    // The caller runs this operation in a background task. Process the files
+    // directly so name allocation and moves share one consistent sequence.
     for (const QString& filePath : filePaths) {
-        sync.addFuture(QtConcurrent::run([&, filePath]() {
-            // Name generation + file move must be atomic to avoid duplicate names and race conditions
-            QMutexLocker locker(&mutex);
+        QFileInfo sourceInfo(filePath);
+        qint64 sourceSize = sourceInfo.size();
 
-            QFileInfo sourceInfo(filePath);
-            qint64 sourceSize = sourceInfo.size();
-
-            // Check if an exact duplicate already exists in any of the output directories
-            QString duplicatePath = findExactDuplicate(filePath, irlName, m_outputDirs, dirCache);
-            if (!duplicatePath.isEmpty()) {
-                LogManager::instance()->info(
-                    QString("File %1 is an exact duplicate of already sorted file %2. Deleting source.")
-                        .arg(sourceInfo.fileName(), duplicatePath));
-                if (QFile::remove(filePath)) {
-                    result.duplicatesRemoved++;
-                } else {
-                    result.errors++;
-                    result.errorMessages.append(
-                        QString("Failed to remove duplicate source file %1").arg(sourceInfo.fileName()));
-                }
-                return;
-            }
-
-            QString ext = sourceInfo.suffix();
-            if (!ext.isEmpty()) {
-                ext = "." + ext;
-            }
-
-            QString baseName = irlName;
-            QString nextName = FileUtils::nextAvailableName(outputDir, baseName, ext);
-            QString destFileName = nextName + ext;
-
-            QString errorMsg;
-            QString destPath = FileUtils::safeMove(filePath, outputDir, destFileName, &errorMsg);
-
-            if (!destPath.isEmpty()) {
-                result.filesSorted++;
-                SortOperation::FileMove move;
-                move.sourcePath = filePath;
-                move.destPath = destPath;
-                fileMoves.append(move);
-
-                // Add the newly sorted file to dirCache so that subsequent duplicate checks
-                // in the same batch can identify identical files.
-                QString key = irlName.toLower().trimmed();
-                if (dirCache.contains(key)) {
-                    dirCache[key].append({destPath, sourceSize});
-                }
+        // Check if an exact duplicate already exists in any of the output directories
+        QString duplicatePath = findExactDuplicate(filePath, irlName, m_outputDirs, dirCache);
+        if (!duplicatePath.isEmpty()) {
+            LogManager::instance()->info(
+                QString("File %1 is an exact duplicate of already sorted file %2. Deleting source.")
+                    .arg(sourceInfo.fileName(), duplicatePath));
+            if (QFile::remove(filePath)) {
+                result.duplicatesRemoved++;
             } else {
                 result.errors++;
                 result.errorMessages.append(
-                    QString("Failed to move %1: %2").arg(sourceInfo.fileName(), errorMsg));
+                    QString("Failed to remove duplicate source file %1").arg(sourceInfo.fileName()));
             }
-        }));
-    }
+            continue;
+        }
 
-    sync.waitForFinished();
+        QString ext = sourceInfo.suffix();
+        if (!ext.isEmpty()) {
+            ext = "." + ext;
+        }
+
+        const QString nextName = FileUtils::nextAvailableName(usedNames, irlName);
+        const QString destFileName = nextName + ext;
+
+        QString errorMsg;
+        const QString destPath = FileUtils::safeMove(filePath, outputDir, destFileName, &errorMsg);
+
+        if (!destPath.isEmpty()) {
+            result.filesSorted++;
+            usedNames.insert(nextName);
+            SortOperation::FileMove move;
+            move.sourcePath = filePath;
+            move.destPath = destPath;
+            fileMoves.append(move);
+
+            // Add the newly sorted file to dirCache so that subsequent duplicate checks
+            // in the same batch can identify identical files.
+            const QString key = irlName.toLower().trimmed();
+            if (dirCache.contains(key)) {
+                dirCache[key].append({destPath, sourceSize});
+            }
+        } else {
+            result.errors++;
+            result.errorMessages.append(
+                QString("Failed to move %1: %2").arg(sourceInfo.fileName(), errorMsg));
+        }
+    }
 
     // Build sort operation for undo
     SortOperation op;
@@ -306,18 +297,13 @@ QStringList SorterEngine::undoLastSort() {
     return restoredPaths;
 }
 
-void SorterEngine::invalidateCache() {
-    m_cacheValid = false;
-}
-
 void SorterEngine::updateCacheForAccount(const QString& accountHandle) {
     if (!m_db || accountHandle.isEmpty() || !m_cacheValid) return;
 
-    // Look up the account in the database
-    if (!m_db->hasAccount(accountHandle)) return;
-
-    QString irlName = m_db->getIrlName(accountHandle);
-    AccountType type = m_db->getEntry(accountHandle).type;
+    const PersonEntry entry = m_db->getEntry(accountHandle);
+    if (entry.account.isEmpty()) return;
+    const QString& irlName = entry.irlName;
+    const AccountType type = entry.type;
 
     // Update all matching cached groups
     for (auto& group : m_cachedGroups) {

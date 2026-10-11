@@ -15,24 +15,27 @@ QString FileUtils::safeMove(const QString& sourcePath,
                             QString* errorMsg) {
     QDir destDirectory(destDir);
     if (!destDirectory.exists()) {
-        if (errorMsg) *errorMsg = "Destination directory does not exist.";
-        LogManager::instance()->logError(sourcePath, *errorMsg);
+        const QString message = "Destination directory does not exist.";
+        if (errorMsg) *errorMsg = message;
+        LogManager::instance()->logError(sourcePath, message);
         return QString();
     }
 
     QFileInfo sourceInfo(sourcePath);
     if (!sourceInfo.exists()) {
-        if (errorMsg) *errorMsg = "Source file does not exist.";
-        LogManager::instance()->logError(sourcePath, *errorMsg);
+        const QString message = "Source file does not exist.";
+        if (errorMsg) *errorMsg = message;
+        LogManager::instance()->logError(sourcePath, message);
         return QString();
     }
 
     QString finalPath = destDir + "/" + destFileName;
 
-    // If destination already exists, find next available number
+    // Avoid replacing a file already at the target path.
     if (QFile::exists(finalPath)) {
-        if (errorMsg) *errorMsg = "Destination file already exists.";
-        LogManager::instance()->logFileSkipped(sourcePath, *errorMsg);
+        const QString message = "Destination file already exists.";
+        if (errorMsg) *errorMsg = message;
+        LogManager::instance()->logFileSkipped(sourcePath, message);
         return QString();
     }
 
@@ -53,10 +56,11 @@ QString FileUtils::safeMove(const QString& sourcePath,
     }
 
     DWORD err = GetLastError();
+    const QString message = QString("MoveFileEx failed (error %1).").arg(err);
     if (errorMsg) {
-        *errorMsg = QString("MoveFileEx failed (error %1).").arg(err);
+        *errorMsg = message;
     }
-    LogManager::instance()->logError(sourcePath, *errorMsg);
+    LogManager::instance()->logError(sourcePath, message);
     return QString();
 
 #else
@@ -65,29 +69,33 @@ QString FileUtils::safeMove(const QString& sourcePath,
     QString tempPath = destDir + "/" + tempName;
 
     if (!QFile::copy(sourcePath, tempPath)) {
-        if (errorMsg) *errorMsg = "Failed to copy file to destination.";
-        LogManager::instance()->logError(sourcePath, *errorMsg);
+        const QString message = "Failed to copy file to destination.";
+        if (errorMsg) *errorMsg = message;
+        LogManager::instance()->logError(sourcePath, message);
         return QString();
     }
 
     QFileInfo tempInfo(tempPath);
     if (!tempInfo.exists() || tempInfo.size() != sourceInfo.size()) {
         QFile::remove(tempPath);
-        if (errorMsg) *errorMsg = "Copy verification failed.";
-        LogManager::instance()->logError(sourcePath, *errorMsg);
+        const QString message = "Copy verification failed.";
+        if (errorMsg) *errorMsg = message;
+        LogManager::instance()->logError(sourcePath, message);
         return QString();
     }
 
     if (!QFile::rename(tempPath, finalPath)) {
         QFile::remove(tempPath);
-        if (errorMsg) *errorMsg = "Failed to finalize rename.";
-        LogManager::instance()->logError(sourcePath, *errorMsg);
+        const QString message = "Failed to finalize rename.";
+        if (errorMsg) *errorMsg = message;
+        LogManager::instance()->logError(sourcePath, message);
         return QString();
     }
 
     if (!QFile::remove(sourcePath)) {
-        if (errorMsg) *errorMsg = "Source file could not be removed after copy.";
-        LogManager::instance()->logError(sourcePath, *errorMsg);
+        const QString message = "Source file could not be removed after copy.";
+        if (errorMsg) *errorMsg = message;
+        LogManager::instance()->logError(sourcePath, message);
         return QString();
     }
 
@@ -96,27 +104,25 @@ QString FileUtils::safeMove(const QString& sourcePath,
 #endif
 }
 
-QString FileUtils::nextAvailableName(const QString& dir,
-                                     const QString& baseName,
-                                     const QString& ext) {
-    Q_UNUSED(ext);
+QSet<QString> FileUtils::existingBaseNames(const QString& dir) {
     QDir directory(dir);
-    if (!directory.exists()) {
-        return baseName + " 1";
-    }
-
-    QStringList existingFiles = directory.entryList(QDir::Files);
     QSet<QString> existingBasenames;
-
-    for (const auto& file : existingFiles) {
-        QFileInfo fi(file);
-        existingBasenames.insert(fi.completeBaseName());
+    if (directory.exists()) {
+        const QStringList existingFiles = directory.entryList(QDir::Files);
+        existingBasenames.reserve(existingFiles.size());
+        for (const QString& file : existingFiles) {
+            existingBasenames.insert(QFileInfo(file).completeBaseName());
+        }
     }
+    return existingBasenames;
+}
 
+QString FileUtils::nextAvailableName(const QSet<QString>& existingBaseNames,
+                                     const QString& baseName) {
     int num = 1;
     while (true) {
         QString candidate = baseName + " " + QString::number(num);
-        if (!existingBasenames.contains(candidate)) {
+        if (!existingBaseNames.contains(candidate)) {
             return candidate;
         }
         num++;

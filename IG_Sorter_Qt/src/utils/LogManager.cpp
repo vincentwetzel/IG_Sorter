@@ -1,6 +1,5 @@
 #include "utils/LogManager.h"
 #include <QDir>
-#include <QFileInfo>
 #include <QDateTime>
 #include <QtDebug>
 
@@ -39,7 +38,10 @@ void LogManager::start(const QString& logDir, int maxFiles) {
     }
 
     m_logFile.setFileName(m_currentLogPath);
-    m_logFile.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text);
+    if (!m_logFile.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+        qWarning().noquote() << QString("Failed to open log file %1: %2")
+                                    .arg(m_currentLogPath, m_logFile.errorString());
+    }
 
     info(QString("Logging started — %1 (max %2 files)")
              .arg(m_currentLogPath).arg(m_maxFiles));
@@ -64,8 +66,6 @@ void LogManager::log(LogLevel level, const QString& message) {
         m_logFile.write(line.toUtf8() + "\n");
         m_logFile.flush();
     }
-
-    rotateIfNeeded();
 }
 
 void LogManager::debug(const QString& message)   { log(LogLevel::Debug, message); }
@@ -76,10 +76,6 @@ void LogManager::error(const QString& message)   { log(LogLevel::Error, message)
 void LogManager::logFileMoved(const QString& src, const QString& dest, qint64 sizeBytes) {
     info(QString("MOVED: \"%1\" -> \"%2\" (%3 bytes)")
              .arg(src, dest).arg(sizeBytes));
-}
-
-void LogManager::logFileDeleted(const QString& path) {
-    info(QString("DELETED: \"%1\"").arg(path));
 }
 
 void LogManager::logFileRenamed(const QString& oldPath, const QString& newPath) {
@@ -98,18 +94,8 @@ void LogManager::logDirectoryCleaned(const QString& dir, int filesRenamed) {
     info(QString("CLEANUP: \"%1\" - %2 files renumbered").arg(dir).arg(filesRenamed));
 }
 
-void LogManager::logSortComplete(int sorted, int skipped, int errors) {
-    info(QString("SORT COMPLETE - sorted: %1, skipped: %2, errors: %3")
-             .arg(sorted).arg(skipped).arg(errors));
-}
-
 QString LogManager::currentLogFile() const {
     return m_currentLogPath;
-}
-
-void LogManager::rotateIfNeeded() {
-    // No size-based rotation — each launch gets its own file
-    Q_UNUSED(m_logFile)
 }
 
 void LogManager::cleanupOldLogs() {

@@ -29,7 +29,7 @@ private slots:
     void handleDeleteAndNext();
     void handleSkip();
     void handleUndo();
-    void handleSelectionChanged(int count);
+    void handleSelectionChanged();
     void handleBackToMenu();
 
 private:

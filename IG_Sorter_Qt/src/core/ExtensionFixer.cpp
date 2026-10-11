@@ -1,7 +1,5 @@
 #include "core/ExtensionFixer.h"
 #include "utils/LogManager.h"
-#include <QDir>
-#include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
 
@@ -87,83 +85,29 @@ bool ExtensionFixer::needsExtensionFix(const QString& filePath, const QString& d
     return true;
 }
 
-bool ExtensionFixer::fixFileExtension(const QString& filePath, const QString& correctFormat,
-                                        ExtensionFixReport& report) {
+bool ExtensionFixer::fixFileExtension(const QString& filePath, const QString& correctFormat) {
     QFileInfo fi(filePath);
     QString baseName = fi.completeBaseName();
     QString newPath = fi.absolutePath() + "/" + baseName + "." + correctFormat;
+    const QString newFileName = QFileInfo(newPath).fileName();
 
     // Check if target file already exists
     if (QFile::exists(newPath)) {
-        report.errors.append(
-            QString("Cannot rename %1 → %2: target already exists").arg(fi.fileName(), 
-                QFileInfo(newPath).fileName()));
+        LogManager::instance()->warning(
+            QString("Cannot rename %1 → %2: target already exists")
+                .arg(fi.fileName(), newFileName));
         return false;
     }
 
     if (!QFile::rename(filePath, newPath)) {
-        report.errors.append(
-            QString("Failed to rename %1 → %2").arg(fi.fileName(), 
-                QFileInfo(newPath).fileName()));
+        LogManager::instance()->warning(
+            QString("Failed to rename %1 → %2").arg(fi.fileName(), newFileName));
         return false;
     }
 
-    report.filesRenamed++;
-    report.renamedFiles.append(
-        QString("%1 → %2").arg(fi.fileName(), QFileInfo(newPath).fileName()));
-
     LogManager::instance()->info(
         QString("Fixed extension: %1 → %2 (detected: %3)")
-            .arg(fi.fileName(), QFileInfo(newPath).fileName(), correctFormat));
+            .arg(fi.fileName(), newFileName, correctFormat));
 
     return true;
-}
-
-ExtensionFixReport ExtensionFixer::run(const QString& sourceDir) {
-    ExtensionFixReport report;
-
-    QDir dir(sourceDir);
-    if (!dir.exists()) {
-        LogManager::instance()->warning(
-            QString("ExtensionFixer: source directory does not exist: %1").arg(sourceDir));
-        return report;
-    }
-
-    // Supported image extensions to check
-    static const QSet<QString> imageExtensions = {
-        "jpg", "jpeg", "png", "gif", "bmp", "webp", "tiff", "tif"
-    };
-
-    // Scan all files
-    QDirIterator it(sourceDir, QDir::Files, QDirIterator::Subdirectories);
-    while (it.hasNext()) {
-        QString filePath = it.next();
-        QFileInfo fi(filePath);
-        QString ext = fi.suffix().toLower();
-
-        if (!imageExtensions.contains(ext)) {
-            continue;  // Skip non-image files
-        }
-
-        report.totalFilesScanned++;
-
-        QString detectedFormat = detectFormat(filePath);
-        if (detectedFormat.isEmpty()) {
-            continue;  // Unknown format, skip
-        }
-
-        if (needsExtensionFix(filePath, detectedFormat)) {
-            fixFileExtension(filePath, detectedFormat, report);
-        }
-    }
-
-    if (report.filesRenamed > 0) {
-        LogManager::instance()->info(
-            QString("ExtensionFixer: fixed %1/%2 files").arg(report.filesRenamed).arg(report.totalFilesScanned));
-    } else {
-        LogManager::instance()->info(
-            QString("ExtensionFixer: all %1 files have correct extensions").arg(report.totalFilesScanned));
-    }
-
-    return report;
 }

@@ -15,7 +15,6 @@ class QHBoxLayout;
 class QGridLayout;
 class QLabel;
 class QPushButton;
-class QLineEdit;
 class QComboBox;
 
 // QLineEdit that grabs Tab key and emits ghostAccepted signal
@@ -56,7 +55,6 @@ public:
                         bool isKnown,
                         AccountType type);
     void clearSelections();
-    void updateSelectedCount(int count);
 
     void setDatabaseManager(DatabaseManager* db);
 
@@ -65,9 +63,6 @@ public:
 
     // Explicitly clear the name input field (used when loading new batches)
     void clearNameInput();
-
-    // Set the name input field to a specific value
-    void setNameInput(const QString& name);
 
     // Check if curator name has been entered
     bool isCuratorNameResolved() const;
@@ -90,17 +85,13 @@ signals:
     void addUnknownAccount(const QString& account, const QString& irlName, AccountType type);
     void openInstagramClicked(const QString& account);
     // For curator accounts — resolve who is in the photos (no DB change)
-    void curatorResolvedName(const QString& irlName);
-    // Favorite name button clicked
-    void favoriteNameSelected(const QString& name);
+    void curatorResolvedName(const QString& irlName, AccountType accountType);
 
 protected:
-    bool eventFilter(QObject* watched, QEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
 
 private:
     void rebuildFolderButtons();
-    void rebuildFavoriteButtons();
     void layoutFavoriteButtons();
     void updateGhostText();
 

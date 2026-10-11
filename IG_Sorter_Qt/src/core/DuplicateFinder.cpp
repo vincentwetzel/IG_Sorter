@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <climits>
 #include <cmath>
 #include <cstdint>
 
@@ -16,6 +15,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QFuture>
+#include <QHash>
 #include <QImage>
 #include <QImageReader>
 #include <QMutex>
@@ -51,60 +51,6 @@ inline QDataStream &operator>>(QDataStream &in, CachedHash &c) {
 
 DuplicateFinder::DuplicateFinder(QObject* parent)
     : QObject(parent) {
-}
-
-QString DuplicateFinder::extractPersonName(const QString& fileName) {
-    // Strip extension first
-    QFileInfo fi(fileName);
-    QString baseName = fi.completeBaseName();  // "John Smith 13" from "John Smith 13.jpg"
-
-    // Remove trailing number(s): everything from the last space+number sequence
-    const static QRegularExpression trailingNum(R"((\s+\d+)+$)");
-    QString name = baseName;
-    auto match = trailingNum.match(name);
-    if (match.hasMatch()) {
-        int start = match.capturedStart(0);
-        if (start != -1) {
-            name = name.left(start);
-        }
-    }
-    return name.trimmed().toLower();
-}
-
-double DuplicateFinder::visualSimilarity(const QString& pathA, const QString& pathB) {
-    const int thumbSize = 16;
-
-    QImageReader readerA(pathA);
-    readerA.setScaledSize(QSize(thumbSize, thumbSize));
-    QImage imgA = readerA.read();
-
-    QImageReader readerB(pathB);
-    readerB.setScaledSize(QSize(thumbSize, thumbSize));
-    QImage imgB = readerB.read();
-
-    if (imgA.isNull() || imgB.isNull()) {
-        // If we can't load them as images (e.g. video files, or unsupported formats),
-        // but they matched on size and name, treat them as duplicates.
-        return 1.0;
-    }
-
-    // Convert to grayscale and resize to small thumbnail
-    imgA = imgA.convertToFormat(QImage::Format_Grayscale8);
-    imgB = imgB.convertToFormat(QImage::Format_Grayscale8);
-
-    // Compare pixel-by-pixel using normalized average difference
-    double totalDiff = 0.0;
-    int pixelCount = thumbSize * thumbSize;
-    for (int y = 0; y < thumbSize; ++y) {
-        const uchar* lineA = imgA.constScanLine(y);
-        const uchar* lineB = imgB.constScanLine(y);
-        for (int x = 0; x < thumbSize; ++x) {
-            totalDiff += std::abs(lineA[x] - lineB[x]);
-        }
-    }
-
-    double avgDiff = totalDiff / pixelCount;
-    return 1.0 - (avgDiff / 255.0);
 }
 
 DuplicateScanResult DuplicateFinder::scan(const QStringList& directories) {
@@ -525,50 +471,4 @@ DuplicateScanResult DuplicateFinder::scan(const QStringList& directories) {
     emit scanProgress(progressTotal, progressTotal);
     LogManager::instance()->info(QString("DuplicateFinder: Scan complete. Found %1 duplicate groups.").arg(result.groups.size()));
     return result;
-}
-
-bool DuplicateFinder::deleteFile(const DuplicateGroup& group, int fileIndex) {
-    if (fileIndex < 0 || fileIndex >= group.files.size()) {
-        return false;
-    }
-
-    const auto& file = group.files[fileIndex];
-    if (QFile::exists(file.filePath)) {
-        return QFile::remove(file.filePath);
-    }
-    return false;
-}
-
-QHash<QString, QList<QString>> DuplicateFinder::groupFilesBySizeAndName(
-    const QStringList& directories, int& totalFiles)
-{
-    QHash<QString, QList<QString>> sizeNameMap;
-    totalFiles = 0;
-
-    emit scanProgress(0, 0); // Initialize UI state
-
-    for (const QString& dirPath : directories) {
-        LogManager::instance()->info(QString("DuplicateFinder: Scanning directory: %1").arg(dirPath));
-        QDirIterator it(dirPath, QDir::Files | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
-        while (it.hasNext()) {
-            it.next();
-            QFileInfo entry = it.fileInfo();
-            totalFiles++;
-
-            if (totalFiles == 1 || totalFiles % 25 == 0) {
-                emit scanProgress(totalFiles, 0); // 0 indicates indeterminate total
-                LogManager::instance()->info(QString("DuplicateFinder: Found %1 files so far...").arg(totalFiles));
-            }
-
-            if (entry.size() <= 0) {
-                continue; // Skip empty/corrupted files
-            }
-            // Group purely by file size (to the byte) to guarantee we catch duplicate copies
-            // even if they have different names or are sorted under different people.
-            QString key = QString::number(entry.size());
-            sizeNameMap[key].append(entry.absoluteFilePath());
-        }
-    }
-
-    return sizeNameMap;
 }

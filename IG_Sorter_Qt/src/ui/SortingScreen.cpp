@@ -1,7 +1,6 @@
 #include "ui/SortingScreen.h"
 
 #include <algorithm>
-#include <QCoreApplication>
 #include <QDesktopServices>
 #include <QFile>
 #include <QFutureWatcher>
@@ -90,8 +89,6 @@ SortingScreen::SortingScreen(QWidget* parent)
     connect(m_finishButton, &QPushButton::clicked,
             this, &SortingScreen::finishClicked);
     connect(m_previewGrid, &ImagePreviewGrid::selectionChanged,
-            m_sortPanel, &SortPanel::updateSelectedCount);
-    connect(m_previewGrid, &ImagePreviewGrid::selectionChanged,
             this, &SortingScreen::handleSelectionChanged);
     connect(m_previewGrid, &ImagePreviewGrid::deleteKeyPressed,
             this, &SortingScreen::handleDeleteSelected);
@@ -124,7 +121,6 @@ void SortingScreen::setGroups(const QList<FileGroup>& groups) {
     m_errorMessages.clear();
     m_newAccountsAdded.clear();
     m_filesByAccountType.clear();
-    m_currentSourceType.clear();
     m_nameCounts.clear();
 
     if (!m_groups.isEmpty()) {
@@ -155,7 +151,6 @@ void SortingScreen::beginStreamingGroups() {
     m_errorMessages.clear();
     m_newAccountsAdded.clear();
     m_filesByAccountType.clear();
-    m_currentSourceType.clear();
     m_nameCounts.clear();
     m_previewGrid->clear();
     m_previewGrid->setEnabled(false);
@@ -592,7 +587,7 @@ void SortingScreen::handleSortToFolder(int folderIndex) {
         QFuture<SortTaskResult> future = QtConcurrent::run([selected, accountHandle, irlName, accountType, outputDir, folderName, enginePtr]() {
             QMutexLocker locker(&s_sortMutex);
             SortTaskResult res;
-            res.result = enginePtr->sortFiles(selected, accountHandle, irlName, accountType, outputDir, folderName);
+            res.result = enginePtr->sortFiles(selected, irlName, outputDir, folderName);
 
             if (res.result.filesSorted + res.result.duplicatesRemoved < selected.size()) {
                 for (const QString& path : std::as_const(selected)) {
@@ -921,7 +916,8 @@ void SortingScreen::handleOpenInstagram(const QString& account) {
     }
 }
 
-void SortingScreen::handleCuratorResolvedName(const QString& irlNameParam) {
+void SortingScreen::handleCuratorResolvedName(const QString& irlNameParam,
+                                               AccountType accountType) {
     if (m_currentGroup < 0 || m_currentGroup >= m_groups.size()) return;
 
     FileGroup& group = m_groups[m_currentGroup];
@@ -959,71 +955,87 @@ void SortingScreen::handleCuratorResolvedName(const QString& irlNameParam) {
         m_sortPanel->setAccountInfo(group.accountHandle, irlName, true,
                                     group.accountType);
     } else {
-        // Curator accounts: the name entered is the MODEL, not the curator.
-        // Check if model exists and add if needed.
-        bool nameExists = m_db && m_db->hasIrlName(irlName);
-        bool accountNeedsLinking = !group.accountHandle.isEmpty() && m_db &&
-                                   !m_db->hasAccount(group.accountHandle);
-
-        if (!nameExists || accountNeedsLinking) {
-            // Model doesn't exist or account needs linking
-            if (nameExists && accountNeedsLinking) {
-                // Model exists but curator account doesn't — show clear confirmation
-                int ret = QMessageBox::question(this, "Add Curator Account",
-                    QString("The model \"%1\" is in the database.\n\n"
-                            "Add the source account \"%2\" as a Curator (photographer)?")
-                        .arg(irlName, group.accountHandle),
-                    QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
-
-                if (ret == QMessageBox::No) {
-                    return;  // User cancelled — don't sort
-                }
-                // User said Yes — add the curator account
-                m_db->addEntry(group.accountHandle, QString(), AccountType::Curator);
-                m_db->save();
-                updateGroupsForNewAccount(group.accountHandle);
-                m_sortPanel->refreshCompleter();
-            } else {
-                // Model doesn't exist — show full Add Person dialog
-                AddPersonDialog dialog(irlName, group.accountHandle, AccountType::Personal, this);
-                if (dialog.exec() == QDialog::Accepted) {
-                    QString confirmedName = dialog.irlName();
-                    QString account = dialog.accountHandle();
-                    AccountType dialogType = dialog.accountType();
-
-                    if (!confirmedName.isEmpty()) {
-                        if (m_db->hasIrlName(confirmedName)) {
-                            // Model exists — just link account if needed
-                            if (!account.isEmpty() && !m_db->hasAccount(account)) {
-                                m_db->addEntry(account, confirmedName, dialogType);
-                                m_db->save();
-                                updateGroupsForNewAccount(account);
-                                m_sortPanel->refreshCompleter();
-                            }
-                        } else {
-                            // New model — add to DB
-                            if (!account.isEmpty()) {
-                                m_db->addEntry(account, confirmedName, dialogType);
-                            } else {
-                                m_db->addEntry(QString(), confirmedName, dialogType);
-                            }
-                            m_db->save();
-                            if (!account.isEmpty()) {
-                                updateGroupsForNewAccount(account);
-                            }
-                            m_sortPanel->refreshCompleter();
-                        }
-                        irlName = confirmedName;
-                    }
-                } else {
-                    return;  // User cancelled — don't sort
-                }
-            }
+        if (!m_db) {
+            QMessageBox::warning(this, "Database Unavailable",
+                "Load an account database before adding a person.");
+            return;
         }
 
-        // Persist model name to group so it is remembered for current and subsequent sub-batches
+        // The source account is the curator; the entered name is the model.
+        const bool nameExists = m_db->hasIrlName(irlName);
+        const bool accountNeedsLinking = !group.accountHandle.isEmpty() &&
+                                         !m_db->hasAccount(group.accountHandle);
+        if (accountNeedsLinking) {
+            const int answer = QMessageBox::question(
+                this, "Add Curator Account",
+                QString("Add the source account \"%1\" as a Curator (photographer)?")
+                    .arg(group.accountHandle),
+                QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
+            if (answer != QMessageBox::Yes) {
+                return;
+            }
+            if (!m_db->addEntry(group.accountHandle, QString(), AccountType::Curator)) {
+                QMessageBox::warning(this, "Duplicate Account",
+                    QString("The source account \"%1\" is already in the database.")
+                        .arg(group.accountHandle));
+                return;
+            }
+            m_db->save();
+            updateGroupsForNewAccount(group.accountHandle);
+            m_sortPanel->refreshCompleter();
+        }
+
+        if (nameExists) {
+            QMessageBox::information(this, "Person Found",
+                QString("\"%1\" is already in the database.").arg(irlName));
+        } else {
+            // Do not prefill the curator's handle as if it belonged to the model.
+            AddPersonDialog dialog(irlName, QString(), accountType, this);
+            if (dialog.exec() != QDialog::Accepted) {
+                return;
+            }
+
+            const QString confirmedName = dialog.irlName();
+            const QString account = dialog.accountHandle();
+            const AccountType dialogType = dialog.accountType();
+            if (confirmedName.isEmpty()) {
+                QMessageBox::warning(this, "Empty Name",
+                    "Please enter a name for this person.");
+                return;
+            }
+            if (!account.isEmpty() && m_db->hasAccount(account)) {
+                QMessageBox::warning(this, "Duplicate Account",
+                    QString("The account \"%1\" is already in the database.").arg(account));
+                return;
+            }
+
+            if (m_db->hasIrlName(confirmedName) && account.isEmpty()) {
+                QMessageBox::information(this, "Person Found",
+                    QString("\"%1\" is already in the database.").arg(confirmedName));
+            } else {
+                if (!m_db->addEntry(account, confirmedName, dialogType)) {
+                    QMessageBox::warning(this, "Add Failed",
+                        QString("Could not add \"%1\" to the database.")
+                            .arg(confirmedName));
+                    return;
+                }
+                m_db->save();
+                if (!account.isEmpty()) {
+                    updateGroupsForNewAccount(account);
+                }
+                m_sortPanel->refreshCompleter();
+                m_newAccountsAdded.append(
+                    QString("%1 → %2 (%3)")
+                        .arg(account.isEmpty() ? "(no account)" : account,
+                             confirmedName, DatabaseManager::accountTypeToString(dialogType)));
+            }
+            irlName = confirmedName;
+        }
+
+        // Remember the model for this group without changing its curator source type.
         m_groups[m_currentGroup].irlName = irlName;
-        m_sortPanel->setAccountInfo(group.accountHandle, irlName, true, group.accountType);
+        m_sortPanel->setAccountInfo(group.accountHandle, irlName, true,
+                                    group.accountType);
     }
 }
 
@@ -1069,11 +1081,6 @@ void SortingScreen::updateHeader() {
             .arg(locale.toString(totalFiles)));
 }
 
-void SortingScreen::recordNameUsed(const QString& name) {
-    if (name.isEmpty()) return;
-    m_nameCounts[name]++;
-}
-
 void SortingScreen::updateFavoriteButtons() {
     // Build sorted list of all names by count
     struct NameCount {
@@ -1102,21 +1109,11 @@ void SortingScreen::updateFavoriteButtons() {
     m_sortPanel->setQuickFillNames(topNames);
 }
 
-QString SortingScreen::getCurrentSourceType() const {
-    if (m_currentGroup >= 0 && m_currentGroup < m_groups.size()) {
-        const FileGroup& group = std::as_const(m_groups)[m_currentGroup];
-        return group.accountHandle;
-    }
-    return QString();
-}
-
 void SortingScreen::updateGroupsForNewAccount(const QString& accountHandle) {
     if (!m_db || accountHandle.isEmpty()) return;
 
-    // Look up the account in the database
-    if (!m_db->hasAccount(accountHandle)) return;
-
-    PersonEntry entry = m_db->getEntry(accountHandle.toLower());
+    const PersonEntry entry = m_db->getEntry(accountHandle);
+    if (entry.account.isEmpty()) return;
     QString irlName = entry.irlName;
     AccountType type = entry.type;
 

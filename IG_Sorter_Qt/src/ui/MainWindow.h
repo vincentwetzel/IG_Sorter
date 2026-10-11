@@ -2,7 +2,6 @@
 
 #include <QMainWindow>
 #include <QList>
-#include "core/Types.h"
 
 class QStackedWidget;
 class QStatusBar;
@@ -34,10 +33,6 @@ public:
 
     DatabaseManager* database() const { return m_db; }
     SorterEngine* engine() const { return m_engine; }
-
-signals:
-    void cleanupFinished();
-    void sortingComplete(const SortReportData& report);
 
 private:
     bool eventFilter(QObject* watched, QEvent* event) override;

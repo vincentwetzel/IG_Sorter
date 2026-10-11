@@ -18,6 +18,13 @@
 // Time window in seconds for merging screenshot groups taken close together
 static const int SCREENSHOT_MERGE_WINDOW_SEC = 15;
 
+static const QSet<QString>& supportedImageExtensions() {
+    static const QSet<QString> extensions = {
+        "jpg", "jpeg", "png", "gif", "bmp", "webp", "tiff", "tif", "svg", "ico"
+    };
+    return extensions;
+}
+
 // Parse "YYYY-MM-DD_HH-MM-SS" timestamp to QDateTime
 static QDateTime parseTimestamp(const QString& ts) {
     if (ts.isEmpty()) {
@@ -39,6 +46,35 @@ static bool isAndroidScreenshot(SourceType t) {
     return t == SourceType::AndroidScreenshot_Instagram ||
            t == SourceType::AndroidScreenshot_Snapchat ||
            t == SourceType::AndroidScreenshot_Chrome;
+}
+
+static void resolveGroupAccount(FileGroup& group, const ParsedResult& parsed,
+                                DatabaseManager* db) {
+    if (parsed.sourceEnum != SourceType::Instagram && parsed.sourceEnum != SourceType::Unknown) {
+        group.isKnown = true;
+        group.accountType = AccountType::IrlOnly;
+        return;
+    }
+    if (!parsed.matched || !db) {
+        return;
+    }
+
+    const PersonEntry entry = db->getEntry(group.accountHandle);
+    if (entry.account.isEmpty()) {
+        return;
+    }
+
+    // Curator and IrlOnly entries can intentionally have no name: their
+    // batch-specific model name is entered in the UI, not stored on the account.
+    if (!entry.irlName.isEmpty() || entry.type == AccountType::Curator ||
+        entry.type == AccountType::IrlOnly) {
+        group.isKnown = true;
+        group.accountType = entry.type;
+    }
+    if (group.isKnown && entry.type != AccountType::Curator &&
+        entry.type != AccountType::IrlOnly) {
+        group.irlName = entry.irlName;
+    }
 }
 
 static void mergePersonalPostsByAccount(QList<FileGroup>& groups) {
@@ -82,11 +118,7 @@ QList<FileGroup> FileGrouper::group(const QString& sourceDir) {
     QList<FileGroup> groups;
     QHash<QString, int> groupIndex;  // key -> index in groups
     QVector<bool> groupHasScreenshot; // parallel vector to track screenshot state on the fly
-
-    // Image file extensions to process (without dot, as QFileInfo::suffix() returns extension without dot)
-    static const QSet<QString> imageExtensions = {
-        "jpg", "jpeg", "png", "gif", "bmp", "webp", "tiff", "tif", "svg", "ico"
-    };
+    const QSet<QString>& imageExtensions = supportedImageExtensions();
 
     // Collect all valid image files in a single pass to avoid running QDirIterator twice
     QStringList validFiles;
@@ -94,11 +126,8 @@ QList<FileGroup> FileGrouper::group(const QString& sourceDir) {
     while (it.hasNext()) {
         it.next();
         const QString path = it.filePath();
-        const int lastDot = path.lastIndexOf('.');
-        if (lastDot != -1) {
-            if (imageExtensions.contains(path.mid(lastDot + 1).toLower())) {
-                validFiles.append(path);
-            }
+        if (imageExtensions.contains(QFileInfo(path).suffix().toLower())) {
+            validFiles.append(path);
         }
     }
 
@@ -132,27 +161,7 @@ QList<FileGroup> FileGrouper::group(const QString& sourceDir) {
             group.accountHandle = accountHandle;
             group.postTimestamp = postTimestamp;
 
-            // Known source types (non-Instagram, e.g. TikTok Slideshow) don't need DB lookup
-            if (parsed.sourceEnum != SourceType::Instagram && parsed.sourceEnum != SourceType::Unknown) {
-                group.isKnown = true;
-                group.accountType = AccountType::IrlOnly;
-            } else if (parsed.matched && m_db && m_db->hasAccount(accountHandle)) {
-                PersonEntry entry = m_db->getEntry(accountHandle.toLower());
-                // Curator and IrlOnly entries can intentionally have no name: their
-                // batch-specific model name is entered in the UI, not stored on the account.
-                if (!entry.irlName.isEmpty() || entry.type == AccountType::Curator ||
-                    entry.type == AccountType::IrlOnly) {
-                    group.isKnown = true;
-                    group.accountType = entry.type;
-                }
-                if (group.isKnown && entry.type != AccountType::Curator &&
-                    entry.type != AccountType::IrlOnly) {
-                    group.irlName = entry.irlName;
-                }
-            } else {
-                group.isKnown = false;
-                group.accountType = AccountType::Personal;
-            }
+            resolveGroupAccount(group, parsed, m_db);
 
             itGroup = groupIndex.insert(key, groups.size());
             groups.append(group);
@@ -256,9 +265,7 @@ QList<FileGroup> FileGrouper::group(const QString& sourceDir) {
 }
 
 QList<FileGroup> FileGrouper::groupStreaming(const QString& sourceDir) {
-    static const QSet<QString> imageExtensions = {
-        "jpg", "jpeg", "png", "gif", "bmp", "webp", "tiff", "tif", "svg", "ico"
-    };
+    const QSet<QString>& imageExtensions = supportedImageExtensions();
     constexpr int filesPerChunk = 20;
 
     QList<FileGroup> allGroups;
@@ -292,22 +299,7 @@ QList<FileGroup> FileGrouper::groupStreaming(const QString& sourceDir) {
                 FileGroup group;
                 group.accountHandle = accountHandle;
                 group.postTimestamp = postTimestamp;
-                if (parsed.sourceEnum != SourceType::Instagram &&
-                    parsed.sourceEnum != SourceType::Unknown) {
-                    group.isKnown = true;
-                    group.accountType = AccountType::IrlOnly;
-                } else if (parsed.matched && m_db && m_db->hasAccount(accountHandle)) {
-                    const PersonEntry entry = m_db->getEntry(accountHandle.toLower());
-                    if (!entry.irlName.isEmpty() || entry.type == AccountType::Curator ||
-                        entry.type == AccountType::IrlOnly) {
-                        group.isKnown = true;
-                        group.accountType = entry.type;
-                    }
-                    if (group.isKnown && entry.type != AccountType::Curator &&
-                        entry.type != AccountType::IrlOnly) {
-                        group.irlName = entry.irlName;
-                    }
-                }
+                resolveGroupAccount(group, parsed, m_db);
                 it = groupIndex.insert(key, chunkGroups.size());
                 chunkGroups.append(group);
             }
@@ -327,7 +319,8 @@ QList<FileGroup> FileGrouper::groupStreaming(const QString& sourceDir) {
     };
 
     std::function<void(const QString&)> scanDirectory;
-    scanDirectory = [&scanDirectory, &pendingFiles, &flushChunk](const QString& directoryPath) {
+    scanDirectory = [&scanDirectory, &pendingFiles, &flushChunk, &imageExtensions](
+                        const QString& directoryPath) {
         const QDir directory(directoryPath);
         const QFileInfoList files = directory.entryInfoList(QDir::Files, QDir::Name);
         const QFileInfoList subdirectories = directory.entryInfoList(
@@ -344,9 +337,7 @@ QList<FileGroup> FileGrouper::groupStreaming(const QString& sourceDir) {
 
             const QString detectedFormat = ExtensionFixer::detectFormat(path);
             if (ExtensionFixer::needsExtensionFix(path, detectedFormat)) {
-                ExtensionFixReport report;
-                if (ExtensionFixer::fixFileExtension(path, detectedFormat, report) &&
-                    !report.renamedFiles.isEmpty()) {
+                if (ExtensionFixer::fixFileExtension(path, detectedFormat)) {
                     path = fileInfo.absolutePath() + "/" + fileInfo.completeBaseName() + "." + detectedFormat;
                 }
             }

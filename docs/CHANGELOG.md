@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Curator Add Person flow**: the sorting panel now shows an account-type selector beside **Add Person**. The selected type is carried into the add dialog, the curator source handle is not prefilled as the model's account, and duplicate or failed additions give visible feedback.
+- **C++ maintenance cleanup**: removed redundant state and duplicate code paths across sorting, grouping, cleanup, file utilities, and UI components; retained behavior while reducing code size.
 - **Sorting group consolidation**: posts are combined across post boundaries only for known Personal accounts; Curator and IRL-only groups remain separate for per-batch name entry.
 - **Sorting preview layout**: favorite-name quick-fill buttons wrap into additional rows at narrower panel widths, and selection borders/checkmarks stay aligned with the displayed image rather than the full thumbnail cell.
 - **Continue button theme styling**: added matching enabled, hover, and pressed states in the light and dark themes.

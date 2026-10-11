@@ -7,7 +7,7 @@ IG_Sorter is a Qt 6 / C++17 desktop application. Its primary project is `IG_Sort
 1. **Configure** source, destination, database, batch size, and theme in Settings. These preferences are persisted with `QSettings`.
 2. **Clean output directories** concurrently across configured destinations to repair file numbering and identify names that need review against the people database.
 3. **Discover and group source files** by walking the source tree, correcting detected image-extension mismatches, parsing filenames, and resolving account handles. After discovery finishes, posts for known Personal accounts are consolidated into one group before the sorting screen receives results. Curator and IRL-only posts remain separate because each may need a different per-batch sorting name. Exact-byte duplicate checks against output folders are deferred until the user sorts a batch.
-4. **Review batches** in the preview grid. The user selects files, supplies or confirms the person name, and chooses a destination.
+4. **Review batches** in the preview grid. The user selects files, supplies or confirms the person name, and chooses a destination. For Curator groups, the name field identifies the person shown in that batch; the adjacent account-type selector controls the type suggested when adding that person. The curator remains the source account and is not automatically assigned to the person. Existing names are recognized, and database-add failures are reported in the UI.
 5. **Review the report** for sorted/skipped counts, errors, and output-folder counts.
 6. **Find duplicates when needed** by scanning configured output folders, reviewing streamed groups, and choosing files to keep or send to the Recycle Bin.
 
@@ -32,8 +32,8 @@ IG_Sorter is a Qt 6 / C++17 desktop application. Its primary project is `IG_Sort
 - `CleanUpAccountsScreen` supports reviewing account entries without names, editing their names and types, and saving all rows together.
 - `SortingScreen` presents completed account groups and sub-batches, coordinates asynchronous move, delete, and undo actions, and updates favorite-name quick-fill counts as a sort starts. If the whole sort action fails, it removes that provisional count; a partial success keeps the count.
 - `ImagePreviewGrid`, `ImageThumbnail`, `ThumbnailWithLabel`, and `FlowLayout` implement the responsive preview surface.
-- `SortPanel` provides destination, selection, name, and unknown-account controls.
-- `AddPersonDialog` creates person/account entries when needed.
+- `SortPanel` provides destination, selection, name, and unknown-account controls. Curator batches show an account-type selector beside **Add Person** and pass the selected type to the person-resolution flow.
+- `AddPersonDialog` creates person/account entries when needed, with the account type suggested by the sorting panel and the account handle left blank unless the user supplies one.
 - `DuplicateFinderScreen` displays streamed matches and manages review, deletion, and undo.
 - `ReportScreen` summarizes the sorting run.
 - `SettingsDialog` edits the source, outputs, database, batch size, and theme.

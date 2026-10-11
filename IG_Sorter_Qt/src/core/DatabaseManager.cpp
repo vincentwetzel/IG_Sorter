@@ -101,19 +101,6 @@ bool DatabaseManager::hasAccount(const QString& handle) const {
     return m_accountIndex.contains(handle.toLower());
 }
 
-QString DatabaseManager::getIrlName(const QString& handle) const {
-    const QString key = handle.toLower();
-    auto it = m_accountIndex.find(key);
-    if (it != m_accountIndex.end()) {
-        int idx = it.value();
-        if (idx >= 0 && idx < m_entries.size()) {
-            return m_entries[idx].irlName;
-        }
-        LogManager::instance()->error(QString("DB Index out of bounds: %1 for handle %2").arg(idx).arg(key));
-    }
-    return QString();
-}
-
 PersonEntry DatabaseManager::getEntry(const QString& handle) const {
     const QString key = handle.toLower();
     auto it = m_accountIndex.find(key);
@@ -127,7 +114,7 @@ PersonEntry DatabaseManager::getEntry(const QString& handle) const {
     return PersonEntry();
 }
 
-QList<PersonEntry> DatabaseManager::allEntries() const {
+const QList<PersonEntry>& DatabaseManager::allEntries() const {
     return m_entries;
 }
 
