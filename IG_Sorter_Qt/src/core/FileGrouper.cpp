@@ -41,6 +41,36 @@ static bool isAndroidScreenshot(SourceType t) {
            t == SourceType::AndroidScreenshot_Chrome;
 }
 
+static void mergePostsByAccount(QList<FileGroup>& groups) {
+    std::sort(groups.begin(), groups.end(),
+        [](const FileGroup& a, const FileGroup& b) {
+            const int accountOrder = QString::compare(a.accountHandle, b.accountHandle, Qt::CaseInsensitive);
+            if (accountOrder != 0) {
+                return accountOrder < 0;
+            }
+            return a.postTimestamp < b.postTimestamp;
+        });
+
+    QList<FileGroup> mergedGroups;
+    mergedGroups.reserve(groups.size());
+    for (const FileGroup& group : std::as_const(groups)) {
+        const bool canMerge = !group.accountHandle.isEmpty() &&
+                              group.accountHandle != "Unknown" &&
+                              group.accountHandle != "Screenshots";
+        if (canMerge && !mergedGroups.isEmpty()) {
+            FileGroup& previous = mergedGroups.last();
+            if (previous.accountHandle.compare(group.accountHandle, Qt::CaseInsensitive) == 0 &&
+                previous.accountHandle != "Unknown" &&
+                previous.accountHandle != "Screenshots") {
+                previous.filePaths.append(group.filePaths);
+                continue;
+            }
+        }
+        mergedGroups.append(group);
+    }
+    groups = std::move(mergedGroups);
+}
+
 FileGrouper::FileGrouper(DatabaseManager* db, QObject* parent)
     : QObject(parent), m_db(db) {}
 
@@ -214,15 +244,9 @@ QList<FileGroup> FileGrouper::group(const QString& sourceDir) {
         }
     }
 
-    // Sort groups by account handle, then by post timestamp.
-    // This ensures all posts for the same account are consecutive.
-    std::sort(groups.begin(), groups.end(),
-        [](const FileGroup& a, const FileGroup& b) {
-            if (a.accountHandle != b.accountHandle) {
-                return a.accountHandle < b.accountHandle;
-            }
-            return a.postTimestamp < b.postTimestamp;
-        });
+    // Combine posts from the same account so the sorting screen can fill a
+    // configured batch with photos across post boundaries.
+    mergePostsByAccount(groups);
 
     return groups;
 }
@@ -293,7 +317,6 @@ QList<FileGroup> FileGrouper::groupStreaming(const QString& sourceDir) {
             return a.postTimestamp < b.postTimestamp;
         });
         allGroups.append(chunkGroups);
-        emit groupsReady(chunkGroups);
         scannedFiles += pendingFiles.size();
         emit progressChanged(scannedFiles, 0);
         pendingFiles.clear();
@@ -306,8 +329,8 @@ QList<FileGroup> FileGrouper::groupStreaming(const QString& sourceDir) {
         const QFileInfoList subdirectories = directory.entryInfoList(
             QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
 
-        // Snapshot each directory before emitting its files so sorting cannot
-        // make the iterator miss entries that it has not visited yet.
+        // Snapshot each directory before processing its files so extension
+        // fixes cannot make the iterator miss entries it has not visited yet.
         for (const QFileInfo& fileInfo : files) {
             QString path = fileInfo.absoluteFilePath();
             const QString ext = fileInfo.suffix().toLower();
@@ -329,8 +352,7 @@ QList<FileGroup> FileGrouper::groupStreaming(const QString& sourceDir) {
             }
         }
 
-        // Do not wait for files in nested folders before showing the first
-        // results from this directory.
+        // Flush this directory's files before descending into nested folders.
         flushChunk();
 
         for (const QFileInfo& subdirectory : subdirectories) {
@@ -341,5 +363,12 @@ QList<FileGroup> FileGrouper::groupStreaming(const QString& sourceDir) {
     };
     scanDirectory(sourceDir);
     flushChunk();
+
+    // A later chunk may contain more posts from an account already seen, so
+    // wait until scanning is complete before emitting consolidated groups.
+    mergePostsByAccount(allGroups);
+    if (!allGroups.isEmpty()) {
+        emit groupsReady(allGroups);
+    }
     return allGroups;
 }

@@ -29,7 +29,8 @@ public:
     // Blocking call — run in a worker thread
     QList<FileGroup> group(const QString& sourceDir);
 
-    // Emits small, independently sortable chunks while walking the source tree.
+    // Emits consolidated account groups after walking the source tree so posts
+    // from one account can share sorting batches.
     QList<FileGroup> groupStreaming(const QString& sourceDir);
 
 signals:

@@ -13,7 +13,7 @@ This document is a maintained snapshot of the current application plus follow-up
 - Favorite-name quick-fill counts update when a sort starts and roll back when all selected file operations fail.
 - Output numbering cleanup, extension correction, safe file movement, undo for recent sort moves, and report summaries.
 - Exact-byte duplicate checks when sorting batches; confirmed output duplicates are still removed directly from the source with `QFile::remove`.
-- Streaming asynchronous grouping, cleanup, sorting file actions, deletion, and undo paths to keep the UI responsive. The sorting screen starts with groups emitted during source discovery and waits for more when the user catches up.
+- Asynchronous source discovery with progress reporting, output cleanup, sorting file actions, deletion, and undo paths to keep the UI responsive. The sorting screen receives completed groups after scanning and consolidating posts by account.
 - Recursive duplicate review with cached file hashes, perceptual image matching plus grayscale pixel comparison, exact SHA-256 fallback, progress, cancellation, streamed groups, Recycle Bin deletion, and undo support.
 - Light and dark QSS themes, application logging, and Windows WIC WebP preview fallback.
 

@@ -16,9 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Known Curator and IRL-only accounts**: these account types remain recognized when their stored name is empty; the sorting name is supplied per batch.
 - **Database manager indexing**: account lookups now keep an incremental in-memory index instead of rebuilding the whole map after every update or delete.
 - **Duplicate finder thumbnail path**: perceptual-hash matches now run through a cached grayscale thumbnail similarity pass that compares actual pixel data rather than palette indices.
-- **Streaming sorting queue**: the sorting screen starts with small groups emitted during the source scan and pauses for more groups when the user catches up.
+- **Sorting groups by account**: posts from the same account are consolidated after source discovery, allowing files across posts to share sorting batches. The sorting screen waits for the scan to finish before presenting groups, and the sort panel labels groups by account type.
 - **Duplicate-check timing**: removed the pre-group source-to-source hash pass; exact-byte checks against existing output files now run when a batch is sorted.
-- **Streaming source discovery**: detected image-extension mismatches are corrected as eligible files are found; grouping results are emitted in chunks during the scan, with possible post splits at chunk or directory boundaries.
+- **Source discovery and grouping**: detected image-extension mismatches are corrected as eligible files are found; the completed scan consolidates posts by account before presenting groups to the sorting screen.
 - **Resizable preview grid**: preview cells now yield to available window space, so long filenames and previously wide layouts do not force the sorting window to stay large.
 - **Preview grid relayouts**: thumbnail removals now batch layout updates and defer relayout work, which keeps the sorting grid responsive during large deletes or batch transitions.
 - **Cleanup screen rebuilds**: directory progress and resolution widgets are torn down and rebuilt safely between cleanup sessions to avoid stale UI state.

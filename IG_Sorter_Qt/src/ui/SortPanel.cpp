@@ -381,9 +381,25 @@ void SortPanel::setAccountInfo(const QString& accountHandle,
     m_isKnown = isKnown;
     m_accountType = type;
 
+    QString accountTypeLabel;
+    switch (type) {
+    case AccountType::Personal:
+        accountTypeLabel = "Personal";
+        break;
+    case AccountType::Curator:
+        accountTypeLabel = "Curator";
+        break;
+    case AccountType::IrlOnly:
+        accountTypeLabel = "IRL Only";
+        break;
+    }
+    const QString accountLabel = accountHandle.isEmpty()
+        ? accountTypeLabel
+        : accountTypeLabel + ": " + accountHandle;
+
     if (type == AccountType::Curator) {
         // Curator accounts post photos of many people — user must identify each batch
-        m_irlNameLabel->setText("Curator: " + accountHandle);
+        m_irlNameLabel->setText(accountLabel);
         m_irlNameLabel->show();
         m_unknownAccountWidget->show();
         m_unknownAccountLabel->setText("Who is in these photos?");
@@ -402,7 +418,8 @@ void SortPanel::setAccountInfo(const QString& accountHandle,
         // IrlOnly source type (TikTok, Twitter, etc.) — the account is the photographer,
         // but the name field is for the MODEL in the photos (changes per batch).
         // NEVER pre-fill the name — always let user enter the model.
-        m_irlNameLabel->hide();
+        m_irlNameLabel->setText(accountLabel);
+        m_irlNameLabel->show();
         m_unknownAccountWidget->show();
         m_unknownAccountLabel->setText("Who is in these photos?");
         m_unknownNameEdit->setPlaceholderText("Enter IRL name...");
@@ -420,7 +437,7 @@ void SortPanel::setAccountInfo(const QString& accountHandle,
         m_openInstagramButton->hide();
     } else if (isKnown && !irlName.isEmpty()) {
         // Personal account with known name — pre-fill the name field
-        m_irlNameLabel->setText(accountHandle);
+        m_irlNameLabel->setText(accountLabel);
         m_irlNameLabel->show();
         m_unknownAccountWidget->show();
         m_unknownAccountLabel->setText("Who is in these photos?");

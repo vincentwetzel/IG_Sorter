@@ -800,7 +800,7 @@ void SortingScreen::handleAddUnknownAccount(const QString& account,
 
                         // Update group so sorting can proceed
                         FileGroup& g = m_groups[m_currentGroup];
-                        if (dialogType == AccountType::Curator || dialogType == AccountType::IrlOnly) {
+                        if (dialogType == AccountType::IrlOnly) {
                             g.irlName = m_sortPanel->getCuratorResolvedName();
                         } else {
                             g.irlName = QString();
@@ -888,18 +888,23 @@ void SortingScreen::handleAddUnknownAccount(const QString& account,
             // Use dialogType (what user selected in dialog), not the original type
             g.accountType = dialogType;
 
-            // For Curator accounts, do NOT overwrite irlName with the photographer's name.
-            // Instead, preserve whatever model name was already typed in the text field.
-            if (dialogType != AccountType::Curator && dialogType != AccountType::IrlOnly) {
-                g.irlName = confirmedName;
-            } else {
+            // A newly added Curator account is the source of these photos, so its
+            // database name must not become the person name for this batch.
+            // IrlOnly sources can still use the typed name for this batch.
+            if (dialogType == AccountType::Curator) {
+                g.irlName = QString();
+            } else if (dialogType == AccountType::IrlOnly) {
                 g.irlName = m_sortPanel->getCuratorResolvedName();
+            } else {
+                g.irlName = confirmedName;
             }
 
-            // Update UI — for Curator and IrlOnly, pass the preserved model name so text field isn't cleared
-            QString displayName = (dialogType == AccountType::Curator || dialogType == AccountType::IrlOnly)
-                                      ? g.irlName
-                                      : confirmedName;
+            // setAccountInfo clears the field when a Curator has no batch name.
+            QString displayName = dialogType == AccountType::Curator
+                                      ? QString()
+                                      : dialogType == AccountType::IrlOnly
+                                            ? g.irlName
+                                            : confirmedName;
             m_sortPanel->setAccountInfo(account, displayName, true, dialogType);
         } else {
             // User cancelled — clear the text field so handleSortToFolder

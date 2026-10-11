@@ -321,7 +321,7 @@ void MainWindow::showSortingScreen() {
     }
     m_engine->initialize(sourceDir, outputDirPaths);
 
-    // Prepare the sorting screen to accept groups as the worker discovers them.
+    // Prepare the sorting screen for consolidated account groups.
     m_statusBar->showMessage("Scanning and grouping files...");
     m_cleanupScreen->setDirectories(QStringList());  // clear old progress bars
     m_cleanupScreen->setStatusText("Grouping files from source directory...");
@@ -341,7 +341,7 @@ void MainWindow::showSortingScreen() {
                 if (m_stackedWidget->currentWidget() != m_sortingScreen) {
                     navigateToScreen(m_sortingScreen);
                 }
-                m_statusBar->showMessage(QString("Sorting while scanning: %1 groups found")
+                m_statusBar->showMessage(QString("Sorting ready: %1 account groups found")
                                              .arg(m_sortingScreen->availableGroupCount()));
             });
 
