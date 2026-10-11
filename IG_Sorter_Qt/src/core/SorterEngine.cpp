@@ -9,8 +9,8 @@
 #include <QDirIterator>
 #include <QFileInfo>
 #include <QFuture>
-#include <QFutureSynchronizer>
 #include <QMutex>
+#include <QThreadPool>
 #include <QtConcurrent>
 
 namespace {
@@ -91,36 +91,49 @@ bool SorterEngine::initialize(const QString& sourceDir, const QStringList& outpu
 }
 
 CleanupReport SorterEngine::runCleanup() {
-    LogManager::instance()->info(QString("Starting cleanup on %1 directories (sequential)").arg(m_outputDirs.size()));
+    LogManager::instance()->info(QString("Starting cleanup on %1 directories concurrently").arg(m_outputDirs.size()));
 
     CleanupReport combinedReport;
+    QVector<QFuture<CleanupReport>> cleanupFutures;
+    cleanupFutures.reserve(m_outputDirs.size());
 
-    // Run each directory sequentially to prevent concurrent logging crashes and race conditions
+    // Use a dedicated pool so this operation can run all directories concurrently
+    // even though runCleanup() itself is already running in the global pool.
+    QThreadPool cleanupPool;
+    cleanupPool.setMaxThreadCount(qMax(1, static_cast<int>(m_outputDirs.size())));
+
     for (const QString& dir : m_outputDirs) {
-        LogManager::instance()->info(QString("Cleaning directory: %1").arg(dir));
+        cleanupFutures.append(QtConcurrent::run(&cleanupPool, [this, dir]() {
+            LogManager::instance()->info(QString("Cleaning directory: %1").arg(dir));
 
-        // Create DirectoryCleanup instance
-        auto* cleanup = new DirectoryCleanup(m_db);
+            DirectoryCleanup cleanup(m_db);
 
-        // Connect progress signal — emit via queued invokeMethod to main thread
-        QObject::connect(cleanup, &DirectoryCleanup::directoryProgress,
-                         this, [this, dir](const QString& d, int current, int total) {
-            Q_UNUSED(d);
-            QMetaObject::invokeMethod(this, [this, dir, current, total]() {
-                emit cleanupProgress(dir, current, total);
-            }, Qt::QueuedConnection);
-        }, Qt::DirectConnection);
+            // Forward progress to the engine's thread before updating the UI.
+            QObject::connect(&cleanup, &DirectoryCleanup::directoryProgress,
+                             this, [this, dir](const QString&, int current, int total) {
+                QMetaObject::invokeMethod(this, [this, dir, current, total]() {
+                    emit cleanupProgress(dir, current, total);
+                }, Qt::QueuedConnection);
+            }, Qt::DirectConnection);
 
-        CleanupReport report = cleanup->run(dir);
-        delete cleanup; 
+            return cleanup.run(dir);
+        }));
+    }
 
-        // Merge results
+    // All directory tasks have been submitted before waiting, so they can run
+    // at the same time. The dedicated pool is drained before it goes out of scope.
+    cleanupPool.waitForDone();
+
+    for (int i = 0; i < m_outputDirs.size(); ++i) {
+        const QString& dir = m_outputDirs[i];
+        const CleanupReport report = cleanupFutures[i].result();
+
         combinedReport.totalDirectoriesScanned += report.totalDirectoriesScanned;
         combinedReport.totalFilesRenamed += report.totalFilesRenamed;
         combinedReport.unresolvedIssues.append(report.unresolvedIssues);
         LogManager::instance()->logDirectoryCleaned(dir, report.totalFilesRenamed);
 
-        // Signal that this directory is done (queued to main thread)
+        // Signal completion on the engine's thread.
         QMetaObject::invokeMethod(this, [this, dir, count = report.totalFilesRenamed]() {
             emit cleanupDirectoryDone(dir, count);
         }, Qt::QueuedConnection);

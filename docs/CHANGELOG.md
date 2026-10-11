@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Output cleanup concurrency**: configured output directories are cleaned in parallel on a dedicated thread pool, with per-directory progress and completion updates.
+- **Account cleanup workflow**: replaced the unused selection controls with a single Save All action that applies edited rows and writes the database once.
+- **Screen navigation**: added screen history and mouse Back-button navigation, while returning to the menu resets the history.
+- **Known Curator and IRL-only accounts**: these account types remain recognized when their stored name is empty; the sorting name is supplied per batch.
 - **Database manager indexing**: account lookups now keep an incremental in-memory index instead of rebuilding the whole map after every update or delete.
 - **Duplicate finder thumbnail path**: perceptual-hash matches now run through a cached grayscale thumbnail similarity pass that compares actual pixel data rather than palette indices.
 - **Streaming sorting queue**: the sorting screen starts with small groups emitted during the source scan and pauses for more groups when the user catches up.

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QMainWindow>
+#include <QList>
 #include "core/Types.h"
 
 class QStackedWidget;
@@ -39,6 +40,9 @@ signals:
     void sortingComplete(const SortReportData& report);
 
 private:
+    bool eventFilter(QObject* watched, QEvent* event) override;
+    void navigateToScreen(QWidget* screen, bool rememberCurrent = true);
+    void navigateBack();
     void startSortingPipeline();
     void cancelGrouping();
 
@@ -54,6 +58,8 @@ private:
     SortingScreen*  m_sortingScreen;
     ReportScreen*   m_reportScreen;
     DuplicateFinderScreen* m_duplicateFinderScreen;
+
+    QList<QWidget*> m_screenHistory;
 
     QFutureWatcher<QList<FileGroup>>* m_groupWatcher;  // null when no grouping in progress
 };

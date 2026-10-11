@@ -104,18 +104,16 @@ QList<FileGroup> FileGrouper::group(const QString& sourceDir) {
                 group.accountType = AccountType::IrlOnly;
             } else if (parsed.matched && m_db && m_db->hasAccount(accountHandle)) {
                 PersonEntry entry = m_db->getEntry(accountHandle.toLower());
-                if (!entry.irlName.isEmpty()) {
-                    AccountType acctType = entry.type;
+                // Curator and IrlOnly entries can intentionally have no name: their
+                // batch-specific model name is entered in the UI, not stored on the account.
+                if (!entry.irlName.isEmpty() || entry.type == AccountType::Curator ||
+                    entry.type == AccountType::IrlOnly) {
                     group.isKnown = true;
-                    group.accountType = acctType;
-                    // For Curator and IrlOnly, do NOT set irlName — the account is the photographer,
-                    // but the name field is for the model (changes per batch)
-                    if (acctType != AccountType::Curator && acctType != AccountType::IrlOnly) {
-                        group.irlName = entry.irlName;
-                    }
-                } else {
-                    group.isKnown = false;
-                    group.accountType = AccountType::Personal;
+                    group.accountType = entry.type;
+                }
+                if (group.isKnown && entry.type != AccountType::Curator &&
+                    entry.type != AccountType::IrlOnly) {
+                    group.irlName = entry.irlName;
                 }
             } else {
                 group.isKnown = false;
@@ -272,12 +270,14 @@ QList<FileGroup> FileGrouper::groupStreaming(const QString& sourceDir) {
                     group.accountType = AccountType::IrlOnly;
                 } else if (parsed.matched && m_db && m_db->hasAccount(accountHandle)) {
                     const PersonEntry entry = m_db->getEntry(accountHandle.toLower());
-                    if (!entry.irlName.isEmpty()) {
+                    if (!entry.irlName.isEmpty() || entry.type == AccountType::Curator ||
+                        entry.type == AccountType::IrlOnly) {
                         group.isKnown = true;
                         group.accountType = entry.type;
-                        if (entry.type != AccountType::Curator && entry.type != AccountType::IrlOnly) {
-                            group.irlName = entry.irlName;
-                        }
+                    }
+                    if (group.isKnown && entry.type != AccountType::Curator &&
+                        entry.type != AccountType::IrlOnly) {
+                        group.irlName = entry.irlName;
                     }
                 }
                 it = groupIndex.insert(key, chunkGroups.size());

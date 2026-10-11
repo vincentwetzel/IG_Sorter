@@ -6,9 +6,9 @@
 #include <QPushButton>
 #include <QListWidget>
 #include <QListWidgetItem>
+#include <QAbstractItemView>
 #include <QLineEdit>
 #include <QComboBox>
-#include <QCheckBox>
 #include <QMessageBox>
 #include <QScrollArea>
 
@@ -92,7 +92,6 @@ bool AccountEditRow::apply() {
         m_saveButton->setStyleSheet(
             "QPushButton { background-color: #4caf50; color: white; font-weight: bold; }");
         m_saveButton->setEnabled(false);
-        m_nameEdit->setStyleSheet("QLineEdit { background-color: #e8f5e9; }");
     }
     return ok;
 }
@@ -129,15 +128,6 @@ CleanUpAccountsScreen::CleanUpAccountsScreen(QWidget* parent)
     m_subtitleLabel->setFont(subFont);
     m_mainLayout->addWidget(m_subtitleLabel);
 
-    // Select All checkbox
-    auto* selectAllLayout = new QHBoxLayout();
-    m_selectAllCheckbox = new QCheckBox("Select All", this);
-    connect(m_selectAllCheckbox, &QCheckBox::stateChanged,
-            this, &CleanUpAccountsScreen::handleSelectAll);
-    selectAllLayout->addWidget(m_selectAllCheckbox);
-    selectAllLayout->addStretch();
-    m_mainLayout->addLayout(selectAllLayout);
-
     // Scrollable accounts list
     auto* scrollArea = new QScrollArea(this);
     scrollArea->setWidgetResizable(true);
@@ -146,6 +136,8 @@ CleanUpAccountsScreen::CleanUpAccountsScreen(QWidget* parent)
     auto* listContainer = new QWidget();
     m_accountsList = new QListWidget(listContainer);
     m_accountsList->setSpacing(4);
+    m_accountsList->setSelectionMode(QAbstractItemView::NoSelection);
+    m_accountsList->setFocusPolicy(Qt::NoFocus);
 
     auto* listLayout = new QVBoxLayout(listContainer);
     listLayout->setContentsMargins(0, 0, 0, 0);
@@ -167,7 +159,7 @@ CleanUpAccountsScreen::CleanUpAccountsScreen(QWidget* parent)
 
     buttonLayout->addStretch();
 
-    m_saveButton = new QPushButton("Save Selected", this);
+    m_saveButton = new QPushButton("Save All", this);
     m_saveButton->setMinimumHeight(40);
     m_saveButton->setFont(btnFont);
     m_saveButton->setObjectName("saveButton");
@@ -177,7 +169,7 @@ CleanUpAccountsScreen::CleanUpAccountsScreen(QWidget* parent)
 
     // Connect buttons
     connect(m_saveButton, &QPushButton::clicked,
-            this, &CleanUpAccountsScreen::handleSaveSelected);
+            this, &CleanUpAccountsScreen::handleSaveAll);
     connect(m_backButton, &QPushButton::clicked,
             this, &CleanUpAccountsScreen::handleBackToMenu);
 }
@@ -218,23 +210,16 @@ void CleanUpAccountsScreen::buildAccountsList() {
         font.setBold(true);
         item->setFont(font);
         m_accountsList->addItem(item);
-        m_selectAllCheckbox->setVisible(false);
         m_saveButton->setEnabled(false);
     } else {
         m_subtitleLabel->setText(
             QString("Found %1 account(s) without IRL names. Enter names below.")
                 .arg(emptyCount));
-        m_selectAllCheckbox->setVisible(true);
         m_saveButton->setEnabled(true);
     }
 }
 
-void CleanUpAccountsScreen::handleSelectAll(int state) {
-    // Select all is just a visual hint — rows handle themselves
-    Q_UNUSED(state);
-}
-
-void CleanUpAccountsScreen::handleSaveSelected() {
+void CleanUpAccountsScreen::handleSaveAll() {
     int savedCount = 0;
     int failedCount = 0;
 

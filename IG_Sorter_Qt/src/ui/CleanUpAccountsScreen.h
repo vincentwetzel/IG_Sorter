@@ -11,7 +11,6 @@ class QListWidget;
 class QListWidgetItem;
 class QLineEdit;
 class QComboBox;
-class QCheckBox;
 class DatabaseManager;
 
 // Single row for editing one account entry
@@ -52,8 +51,7 @@ signals:
     void menuClicked();
 
 private slots:
-    void handleSelectAll(int state);
-    void handleSaveSelected();
+    void handleSaveAll();
     void handleBackToMenu();
 
 private:
@@ -64,7 +62,6 @@ private:
     QVBoxLayout*       m_mainLayout;
     QLabel*            m_titleLabel;
     QLabel*            m_subtitleLabel;
-    QCheckBox*         m_selectAllCheckbox;
     QListWidget*       m_accountsList;
     QPushButton*       m_saveButton;
     QPushButton*       m_backButton;

@@ -24,6 +24,8 @@
 #include <QtConcurrent>
 #include <QFutureWatcher>
 #include <QMessageBox>
+#include <QMouseEvent>
+#include <QWidget>
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
@@ -97,6 +99,10 @@ MainWindow::MainWindow(QWidget* parent)
     m_stackedWidget->addWidget(m_duplicateFinderScreen);   // index 5
 
     m_groupWatcher = nullptr;  // no grouping in progress at startup
+
+    // The application event filter lets the mouse's dedicated Back button work
+    // regardless of which child widget currently has focus.
+    qApp->installEventFilter(this);
 
     // === Connect screen navigation signals ===
 
@@ -192,23 +198,64 @@ MainWindow::MainWindow(QWidget* parent)
 }
 
 MainWindow::~MainWindow() {
+    qApp->removeEventFilter(this);
     cancelGrouping();
+}
+
+bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
+    if (event->type() == QEvent::MouseButtonPress) {
+        auto* widget = qobject_cast<QWidget*>(watched);
+        if (widget && widget->window() == this) {
+            auto* mouseEvent = static_cast<QMouseEvent*>(event);
+            if (mouseEvent->button() == Qt::BackButton) {
+                navigateBack();
+                return true;
+            }
+        }
+    }
+
+    return QMainWindow::eventFilter(watched, event);
+}
+
+void MainWindow::navigateToScreen(QWidget* screen, bool rememberCurrent) {
+    QWidget* currentScreen = m_stackedWidget->currentWidget();
+    if (rememberCurrent && currentScreen && currentScreen != screen) {
+        m_screenHistory.append(currentScreen);
+    }
+    m_stackedWidget->setCurrentWidget(screen);
+}
+
+void MainWindow::navigateBack() {
+    while (!m_screenHistory.isEmpty()) {
+        QWidget* previousScreen = m_screenHistory.takeLast();
+        if (!previousScreen || previousScreen == m_stackedWidget->currentWidget()) {
+            continue;
+        }
+
+        if (previousScreen == m_menuScreen) {
+            showMenuScreen();
+        } else {
+            navigateToScreen(previousScreen, false);
+        }
+        return;
+    }
 }
 
 void MainWindow::showMenuScreen() {
     cancelGrouping();
+    m_screenHistory.clear();
     m_menuScreen->refreshConfigStatus();
-    m_stackedWidget->setCurrentWidget(m_menuScreen);
+    navigateToScreen(m_menuScreen, false);
     m_statusBar->showMessage("Ready");
 }
 
 void MainWindow::showCleanupScreen() {
-    m_stackedWidget->setCurrentWidget(m_cleanupScreen);
+    navigateToScreen(m_cleanupScreen);
 }
 
 void MainWindow::showCleanUpAccountsScreen() {
     m_cleanUpAccountsScreen->refreshAccountsList();
-    m_stackedWidget->setCurrentWidget(m_cleanUpAccountsScreen);
+    navigateToScreen(m_cleanUpAccountsScreen);
 }
 
 void MainWindow::cancelGrouping() {
@@ -292,7 +339,7 @@ void MainWindow::showSortingScreen() {
                 if (m_groupWatcher != watcher || groups.isEmpty()) return;
                 m_sortingScreen->appendGroups(groups);
                 if (m_stackedWidget->currentWidget() != m_sortingScreen) {
-                    m_stackedWidget->setCurrentWidget(m_sortingScreen);
+                    navigateToScreen(m_sortingScreen);
                 }
                 m_statusBar->showMessage(QString("Sorting while scanning: %1 groups found")
                                              .arg(m_sortingScreen->availableGroupCount()));
@@ -307,7 +354,7 @@ void MainWindow::showSortingScreen() {
                 if (m_groupWatcher == watcher) m_groupWatcher = nullptr;
 
                 m_sortingScreen->finishStreamingGroups();
-                m_stackedWidget->setCurrentWidget(m_sortingScreen);
+                navigateToScreen(m_sortingScreen);
                 m_statusBar->showMessage(QString("Grouping complete: %1 groups found")
                                              .arg(groups.size()));
             });
@@ -318,7 +365,7 @@ void MainWindow::showSortingScreen() {
 }
 
 void MainWindow::showReportScreen() {
-    m_stackedWidget->setCurrentWidget(m_reportScreen);
+    navigateToScreen(m_reportScreen);
     m_statusBar->showMessage("Sorting complete.");
 }
 
@@ -341,7 +388,7 @@ void MainWindow::showDuplicateFinderScreen() {
     }
 
     m_duplicateFinderScreen->setDirectories(scanDirPaths);
-    m_stackedWidget->setCurrentWidget(m_duplicateFinderScreen);
+    navigateToScreen(m_duplicateFinderScreen);
     m_statusBar->showMessage("Ready to scan for duplicates.");
 }
 
