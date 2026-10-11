@@ -347,6 +347,12 @@ void DuplicateFinderScreen::scanFinishedSlot() {
                     "%2 files can be removed, freeing <b>%3</b>.")
                 .arg(m_groups.size()).arg(totalFiles - m_groups.size()).arg(reclaimableStr));
 
+        // Resume review if the scan completed while the user was waiting for
+        // another group to arrive.
+        if (m_currentGroup >= 0 && m_currentGroup < m_groups.size() && m_previewGrid->isHidden()) {
+            loadGroup(m_currentGroup);
+        }
+
         // Update summary label with final group count, but do NOT reload the group images
         // as that would discard the user's active selections during scanning.
         if (m_currentGroup >= 0 && m_currentGroup < m_groups.size()) {
@@ -373,11 +379,16 @@ void DuplicateFinderScreen::scanFinishedSlot() {
 }
 
 void DuplicateFinderScreen::handleGroupFound(const DuplicateGroup& group) {
+    const int groupIndex = m_groups.size();
     m_groups.append(group);
 
     if (m_currentGroup == -1) {
         m_currentGroup = 0;
         loadGroup(0);
+    } else if (m_currentGroup == groupIndex) {
+        // The user may have advanced through every group found so far while the
+        // background scan was still running. Show this newly available group.
+        loadGroup(m_currentGroup);
     } else {
         // Just update the group summary label with the new total number of groups
         if (m_currentGroup >= 0 && m_currentGroup < m_groups.size()) {

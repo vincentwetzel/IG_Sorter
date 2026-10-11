@@ -241,7 +241,23 @@ void SortingScreen::loadNextBatch() {
         LogManager::instance()->info(QString("SortingScreen::loadNextBatch loading batch %1..%2 for group %3")
             .arg(startIdx).arg(endIdx - 1).arg(m_currentGroup));
 
-        QStringList batchFiles = group.filePaths.mid(startIdx, endIdx - startIdx);
+        // Groups are built once at the start of sorting, so paths for files
+        // that have already been moved remain in the group. Undo can return
+        // the cursor to one of those batches; only display files that are
+        // currently back in the source directory to avoid empty preview tiles.
+        QStringList batchFiles;
+        const QStringList candidateFiles = group.filePaths.mid(startIdx, endIdx - startIdx);
+        batchFiles.reserve(candidateFiles.size());
+        for (const QString& filePath : candidateFiles) {
+            if (QFile::exists(filePath)) {
+                batchFiles.append(filePath);
+            }
+        }
+
+        if (batchFiles.isEmpty()) {
+            ++m_currentSubBatch;
+            continue;
+        }
 
         m_previewGrid->setImages(batchFiles);
         m_sortPanel->setAccountInfo(group.accountHandle, group.irlName,
@@ -711,6 +727,8 @@ void SortingScreen::handleUndo() {
         QStringList restoredPaths = watcher->result();
         
         if (!restoredPaths.isEmpty()) {
+            m_filesSorted = qMax(0, m_filesSorted - restoredPaths.size());
+
             // Put the UI back on the batch containing the files that were
             // restored. The current cursor may already have advanced since
             // the sort completed, so blindly loading the next batch can hide

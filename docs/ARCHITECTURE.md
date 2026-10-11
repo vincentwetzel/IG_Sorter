@@ -30,11 +30,11 @@ IG_Sorter is a Qt 6 / C++17 desktop application. Its primary project is `IG_Sort
 - `MenuScreen` provides entry points to sorting, account cleanup, duplicate finding, and Settings.
 - `CleanupScreen` presents cleanup progress and unresolved names.
 - `CleanUpAccountsScreen` supports reviewing account entries without names, editing their names and types, and saving all rows together.
-- `SortingScreen` presents completed account groups and sub-batches, coordinates asynchronous move, delete, and undo actions, and updates favorite-name quick-fill counts as a sort starts. If the whole sort action fails, it removes that provisional count; a partial success keeps the count.
+- `SortingScreen` presents completed account groups and sub-batches, coordinates asynchronous move, delete, and undo actions, and updates favorite-name quick-fill counts as a sort starts. If the whole sort action fails, it removes that provisional count; a partial success keeps the count. When undo returns to an earlier batch, the preview omits paths that are still absent from the source directory and the sorted count is reduced by the number of restored files.
 - `ImagePreviewGrid`, `ImageThumbnail`, `ThumbnailWithLabel`, and `FlowLayout` implement the responsive preview surface.
 - `SortPanel` provides destination, selection, name, and unknown-account controls. Curator batches show an account-type selector beside **Add Person** and pass the selected type to the person-resolution flow.
 - `AddPersonDialog` creates person/account entries when needed, with the account type suggested by the sorting panel and the account handle left blank unless the user supplies one.
-- `DuplicateFinderScreen` displays streamed matches and manages review, deletion, and undo.
+- `DuplicateFinderScreen` displays streamed matches and manages review, deletion, and undo. While scanning, it opens new groups as they arrive if the user has reached the end of available results, and resumes the current review if the scan finishes while waiting.
 - `ReportScreen` summarizes the sorting run.
 - `SettingsDialog` edits the source, outputs, database, batch size, and theme.
 - `MainWindow` tracks screen history for the mouse Back button and clears that history when returning to the main menu.
@@ -71,7 +71,7 @@ The database path is selected by the user; there is no default private database 
 
 ## Duplicate matching and file removal
 
-The duplicate finder recursively walks the configured output directories. It reuses cached file results when path metadata (including size and modification time) remains valid. Image candidates use perceptual image hashes followed by a small grayscale thumbnail comparison; unsupported/non-image cases use exact SHA-256 comparison. Candidate grouping also considers file size and the person name inferred from the standardized output filename.
+The duplicate finder recursively walks the configured output directories. It reuses cached file results when path metadata (including size and modification time) remains valid. Image candidates use perceptual image hashes, then a fast 16x16 grayscale thumbnail comparison at an 85% similarity threshold, followed by a 128x128 grayscale pixel comparison at a 94% threshold. The detailed comparison confirms image matches after the small thumbnail has identified a candidate. Unsupported/non-image cases use exact SHA-256 comparison. Candidate grouping also considers file size and the person name inferred from the standardized output filename.
 
 These are candidate-matching rules, not a guarantee that every visual variation is found. Resized, recompressed, or cropped files may not match. The review screen is the confirmation step: deletion is user-directed and uses the Recycle Bin/undo workflow.
 
@@ -83,7 +83,7 @@ The Duplicate Finder screen remains the manual review flow: it presents likely g
 
 ## Background work and ownership
 
-Filesystem scans, grouping, cleanup, duplicate scanning, and sorting actions can be long-running. Output-directory cleanup submits one task per configured directory to a dedicated thread pool and reports progress as tasks run. Group discovery reports progress while scanning, but the sorting screen waits for the complete scan and account consolidation before presenting groups. The UI uses `QtConcurrent` and `QFutureWatcher` where appropriate, then applies results and updates widgets on the UI thread. Sort tasks and Undo share a mutex so undo history is not read or changed while a sort is mutating it; the Undo control is disabled until pending sorts finish. After a successful undo, the preview selects the batch containing a restored source file when that file is still in the current groups. QObject-derived components use Qt parent-child ownership. Keep worker inputs/results value-based where practical and do not access widgets from worker tasks.
+Filesystem scans, grouping, cleanup, duplicate scanning, and sorting actions can be long-running. Output-directory cleanup submits one task per configured directory to a dedicated thread pool and reports progress as tasks run. Group discovery reports progress while scanning, but the sorting screen waits for the complete scan and account consolidation before presenting groups. The UI uses `QtConcurrent` and `QFutureWatcher` where appropriate, then applies results and updates widgets on the UI thread. Sort tasks and Undo share a mutex so undo history is not read or changed while a sort is mutating it; the Undo control is disabled until pending sorts finish. After a successful undo, the preview returns to the batch containing a restored source file when that file remains in the current groups, filters out paths that are still missing from the source directory, and updates the sorted count. QObject-derived components use Qt parent-child ownership. Keep worker inputs/results value-based where practical and do not access widgets from worker tasks.
 
 ## Source tree
 

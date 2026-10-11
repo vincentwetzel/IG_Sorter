@@ -9,7 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Person-name normalization**: names are compatibility-normalized and trimmed when entered or stored, so stylized Unicode characters such as mathematical alphabets resolve consistently with ordinary text.
-- **Sort undo coordination**: Undo is disabled while sort tasks are pending and serialized with sorting; after restoring files, the preview returns to the batch containing those files.
+- **Sort undo coordination**: Undo is disabled while sort tasks are pending and serialized with sorting. After restoring files, the preview returns to their batch, skips files that remain sorted, and subtracts restored files from the sorted count.
+- **Duplicate image verification**: image candidates that pass the fast 16x16 grayscale comparison are checked again at 128x128 resolution with a stricter similarity threshold before they are grouped.
+- **Duplicate scan navigation**: when review reaches the end of currently available groups during a scan, newly discovered groups open as they arrive; the active review is restored if the scan finishes while waiting.
 - **Curator Add Person flow**: the sorting panel now shows an account-type selector beside **Add Person**. The selected type is carried into the add dialog, the curator source handle is not prefilled as the model's account, and duplicate or failed additions give visible feedback.
 - **C++ maintenance cleanup**: removed redundant state and duplicate code paths across sorting, grouping, cleanup, file utilities, and UI components; retained behavior while reducing code size.
 - **Sorting group consolidation**: posts are combined across post boundaries only for known Personal accounts; Curator and IRL-only groups remain separate for per-batch name entry.

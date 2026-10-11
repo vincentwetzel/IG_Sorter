@@ -14,7 +14,7 @@ This document is a maintained snapshot of the current application plus follow-up
 - Output numbering cleanup, extension correction, safe file movement, undo for recent sort moves, and report summaries.
 - Exact-byte duplicate checks when sorting batches; confirmed output duplicates are still removed directly from the source with `QFile::remove`.
 - Asynchronous source discovery with progress reporting, output cleanup, sorting file actions, deletion, and undo paths to keep the UI responsive. The sorting screen receives completed groups after scanning and consolidating posts for known Personal accounts; Curator, IRL-only, unknown, and screenshot groups stay separate.
-- Recursive duplicate review with cached file hashes, perceptual image matching plus grayscale pixel comparison, exact SHA-256 fallback, progress, cancellation, streamed groups, Recycle Bin deletion, and undo support.
+- Recursive duplicate review with cached file hashes, perceptual image matching followed by 16x16 and 128x128 grayscale comparisons, exact SHA-256 fallback, progress, cancellation, streamed groups that remain navigable as results arrive, Recycle Bin deletion, and undo support.
 - Responsive sorting controls: favorite-name quick-fill buttons wrap across rows as panel width changes, and thumbnail selection indicators follow the displayed image bounds.
 - Light and dark QSS themes, application logging, and Windows WIC WebP preview fallback.
 

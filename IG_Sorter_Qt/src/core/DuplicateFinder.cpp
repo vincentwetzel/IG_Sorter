@@ -93,6 +93,7 @@ DuplicateScanResult DuplicateFinder::scan(const QStringList& directories) {
         int index = 0;
         bool cached = false;
         QImage lowResImg;
+        QImage verificationImg;
         QString parsedPersonName;
         qint64 lastModified = 0;
     };
@@ -328,6 +329,41 @@ DuplicateScanResult DuplicateFinder::scan(const QStringList& directories) {
         return 1.0 - (avgDiff / 255.0);
     };
 
+    auto getVerificationImg = [](FileHashData& fd) -> QImage {
+        if (!fd.verificationImg.isNull()) {
+            return fd.verificationImg;
+        }
+
+        QImageReader reader(fd.df.filePath);
+        reader.setScaledSize(QSize(128, 128));
+        QImage img = reader.read();
+        if (!img.isNull()) {
+            fd.verificationImg = img.scaled(QSize(128, 128), Qt::IgnoreAspectRatio,
+                                            Qt::SmoothTransformation)
+                                     .convertToFormat(QImage::Format_Grayscale8);
+        }
+        return fd.verificationImg;
+    };
+
+    auto visualSimilarityDetailed = [](const QImage& imgA, const QImage& imgB) -> double {
+        if (imgA.isNull() || imgB.isNull() || imgA.size() != imgB.size()) {
+            return 0.0;
+        }
+
+        double totalDiff = 0.0;
+        const int pixelCount = imgA.width() * imgA.height();
+        for (int y = 0; y < imgA.height(); ++y) {
+            const uchar* lineA = imgA.constScanLine(y);
+            const uchar* lineB = imgB.constScanLine(y);
+            for (int x = 0; x < imgA.width(); ++x) {
+                totalDiff += std::abs(lineA[x] - lineB[x]);
+            }
+        }
+
+        const double avgDiff = totalDiff / pixelCount;
+        return 1.0 - (avgDiff / 255.0);
+    };
+
     QElapsedTimer progressTimer;
     progressTimer.start();
 
@@ -386,10 +422,28 @@ DuplicateScanResult DuplicateFinder::scan(const QStringList& directories) {
                     // 2. Fast in-memory pixel-level visual similarity check
                     QImage imgA = getLowResImg(fileData[i]);
                     QImage imgB = getLowResImg(fileData[j]);
-                    double similarity = visualSimilarityFast(imgA, imgB);
-                    if (similarity >= 0.85) {
-                        isDupe = true;
-                        LogManager::instance()->info(QString("  *** MATCH FOUND *** -> %1 == %2 (Distance: %3, Sim: %4)").arg(fileData[i].df.fileName, fileData[j].df.fileName).arg(dist).arg(similarity));
+                    double fastSimilarity = visualSimilarityFast(imgA, imgB);
+                    if (fastSimilarity >= 0.85) {
+                        // The small thumbnail is only a candidate filter. Confirm at a
+                        // higher resolution so similar poses and backgrounds are less
+                        // likely to be grouped as duplicates.
+                        QImage detailedImgA = getVerificationImg(fileData[i]);
+                        QImage detailedImgB = getVerificationImg(fileData[j]);
+                        double detailedSimilarity = visualSimilarityDetailed(detailedImgA, detailedImgB);
+                        if (detailedSimilarity >= 0.94) {
+                            isDupe = true;
+                            LogManager::instance()->info(QString("  *** MATCH FOUND *** -> %1 == %2 (Distance: %3, Fast Sim: %4, Detailed Sim: %5)")
+                                                             .arg(fileData[i].df.fileName, fileData[j].df.fileName)
+                                                             .arg(dist)
+                                                             .arg(fastSimilarity)
+                                                             .arg(detailedSimilarity));
+                        } else {
+                            LogManager::instance()->info(QString("  -> Rejected similar images: %1 != %2 (Distance: %3, Fast Sim: %4, Detailed Sim: %5)")
+                                                             .arg(fileData[i].df.fileName, fileData[j].df.fileName)
+                                                             .arg(dist)
+                                                             .arg(fastSimilarity)
+                                                             .arg(detailedSimilarity));
+                        }
                     }
                 }
             } else if (!fileData[i].isImage && !fileData[j].isImage) {
