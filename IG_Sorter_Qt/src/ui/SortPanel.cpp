@@ -348,9 +348,9 @@ void SortPanel::refreshCompleter() {
     m_allIrlNames.clear();
     m_allCompleterEntries.reserve(pairs.size());
     m_allIrlNames.reserve(pairs.size());
-    for (const auto& [display, irlName] : pairs) {
-        m_allCompleterEntries.append(display);
-        m_allIrlNames.append(irlName);
+    for (auto& [display, irlName] : pairs) {
+        m_allCompleterEntries.append(std::move(display));
+        m_allIrlNames.append(std::move(irlName));
     }
 
     m_completerModel->setStringList(m_allCompleterEntries);

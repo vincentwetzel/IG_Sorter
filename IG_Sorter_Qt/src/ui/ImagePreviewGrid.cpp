@@ -1,9 +1,13 @@
 #include "ui/ImagePreviewGrid.h"
 
+#include <algorithm>
+#include <utility>
+
 #include <QGridLayout>
 #include <QKeyEvent>
 #include <QResizeEvent>
 #include <QSet>
+#include <QTimer>
 
 #include "ui/ImageThumbnail.h"
 #include "ui/ThumbnailWithLabel.h"
@@ -26,12 +30,9 @@ void ImagePreviewGrid::setImages(const QStringList& filePaths) {
         m_items.append(item);
 
         connect(item, &ThumbnailWithLabel::clicked, this, [this]() {
-            int selectedCount = 0;
-            for (const auto* it : m_items) {
-                if (it->thumbnail()->isSelected()) {
-                    selectedCount++;
-                }
-            }
+            int selectedCount = std::count_if(m_items.cbegin(), m_items.cend(), [](const ThumbnailWithLabel* it) {
+                return it->thumbnail()->isSelected();
+            });
             emit selectionChanged(selectedCount);
         });
     }
@@ -50,6 +51,8 @@ void ImagePreviewGrid::rebuildGrid() {
         return;
     }
 
+    setUpdatesEnabled(false);
+
     const int availableWidth = width() - m_gridLayout->contentsMargins().left()
                              - m_gridLayout->contentsMargins().right();
     const int availableHeight = height() - m_gridLayout->contentsMargins().top()
@@ -58,6 +61,7 @@ void ImagePreviewGrid::rebuildGrid() {
     if (availableWidth <= 0 || availableHeight <= 0) {
         LogManager::instance()->warning(QString("ImagePreviewGrid::rebuildGrid invalid available size %1x%2, returning")
             .arg(availableWidth).arg(availableHeight));
+        setUpdatesEnabled(true);
         return;
     }
 
@@ -69,7 +73,7 @@ void ImagePreviewGrid::rebuildGrid() {
     } else {
         double sumAspect = 0;
         int validCount = 0;
-        for (const auto* item : m_items) {
+        for (const auto* item : std::as_const(m_items)) {
             const QSize imgSize = item->thumbnail()->imageDimensions();
             if (!imgSize.isNull() && imgSize.width() > 0 && imgSize.height() > 0) {
                 sumAspect += static_cast<double>(imgSize.width()) / imgSize.height();
@@ -107,8 +111,16 @@ void ImagePreviewGrid::rebuildGrid() {
 
     if (colsChanged) {
         LogManager::instance()->info("ImagePreviewGrid::rebuildGrid cols changed, clearing layout");
-        for (int i = m_items.size() - 1; i >= 0; --i) {
-            m_gridLayout->removeWidget(m_items[i]);
+        for (auto* item : std::as_const(m_items)) {
+            m_gridLayout->removeWidget(item);
+        }
+        for (int c = 0; c < m_gridLayout->columnCount(); ++c) {
+            m_gridLayout->setColumnStretch(c, 0);
+            m_gridLayout->setColumnMinimumWidth(c, 0);
+        }
+        for (int r = 0; r < m_gridLayout->rowCount(); ++r) {
+            m_gridLayout->setRowStretch(r, 0);
+            m_gridLayout->setRowMinimumHeight(r, 0);
         }
     }
 
@@ -120,6 +132,15 @@ void ImagePreviewGrid::rebuildGrid() {
         }
         m_items[i]->thumbnail()->setCellSize(cellSize);
     }
+
+    for (int r = 0; r < rows; ++r) {
+        m_gridLayout->setRowMinimumHeight(r, cellHeight);
+    }
+    for (int c = 0; c < cols; ++c) {
+        m_gridLayout->setColumnMinimumWidth(c, cellWidth);
+    }
+
+    setUpdatesEnabled(true);
     LogManager::instance()->info("ImagePreviewGrid::rebuildGrid complete");
 }
 
@@ -130,14 +151,9 @@ void ImagePreviewGrid::resizeEvent(QResizeEvent* event) {
 
 void ImagePreviewGrid::keyPressEvent(QKeyEvent* event) {
     if (event->key() == Qt::Key_Delete) {
-        // Optimize: avoid constructing a temporary string list and copying paths on keypress
-        bool hasSelected = false;
-        for (const auto* item : m_items) {
-            if (item->thumbnail()->isSelected()) {
-                hasSelected = true;
-                break;
-            }
-        }
+        bool hasSelected = std::any_of(m_items.cbegin(), m_items.cend(), [](const ThumbnailWithLabel* item) {
+            return item->thumbnail()->isSelected();
+        });
         if (hasSelected) {
             emit deleteKeyPressed();
         }
@@ -150,7 +166,7 @@ void ImagePreviewGrid::keyPressEvent(QKeyEvent* event) {
 QStringList ImagePreviewGrid::selectedFilePaths() const {
     QStringList selected;
     selected.reserve(m_items.size());
-    for (const auto* item : m_items) {
+    for (const auto* item : std::as_const(m_items)) {
         if (item->thumbnail()->isSelected()) {
             selected.append(item->filePath());
         }
@@ -159,36 +175,44 @@ QStringList ImagePreviewGrid::selectedFilePaths() const {
 }
 
 void ImagePreviewGrid::removeSelected() {
-    QList<ThumbnailWithLabel*> remainingItems;
-    remainingItems.reserve(m_items.size());
+    setUpdatesEnabled(false);
 
-    for (auto* item : m_items) {
+    auto it = std::remove_if(m_items.begin(), m_items.end(), [this](ThumbnailWithLabel* item) {
         if (item->thumbnail()->isSelected()) {
             m_gridLayout->removeWidget(item);
             item->deleteLater();
-        } else {
-            remainingItems.append(item);
+            return true;
         }
-    }
-    m_items = remainingItems;
+        return false;
+    });
+    m_items.erase(it, m_items.end());
+
     setProperty("cachedAvgAspect", QVariant());
 
     emit selectionChanged(0);
+    m_cols = 0; // Force layout re-evaluation to shift items and close grid gaps
     rebuildGrid();
+
+    setUpdatesEnabled(true);
 }
 
 void ImagePreviewGrid::removePath(const QString& filePath) {
-    for (auto it = m_items.begin(); it != m_items.end(); ++it) {
-        if ((*it)->filePath() == filePath) {
-            auto* item = *it;
-            m_gridLayout->removeWidget(item);
-            item->deleteLater();
-            m_items.erase(it);
-            setProperty("cachedAvgAspect", QVariant());
-            emit selectionChanged(0);
-            rebuildGrid();
-            return;
-        }
+    auto it = std::find_if(m_items.cbegin(), m_items.cend(), [&](const ThumbnailWithLabel* item) {
+        return item->filePath() == filePath;
+    });
+    if (it != m_items.end()) {
+        auto* item = *it;
+        m_gridLayout->removeWidget(item);
+        item->deleteLater();
+        m_items.erase(it);
+        setProperty("cachedAvgAspect", QVariant());
+        emit selectionChanged(0);
+
+        m_cols = 0; // Force layout re-evaluation to shift items and close grid gaps
+        // Collapse multiple rapid removals (O(N^2) lag) into a single deferred layout pass
+        QTimer::singleShot(0, this, [this]() {
+            if (m_cols == 0) rebuildGrid();
+        });
     }
 }
 
@@ -197,15 +221,15 @@ void ImagePreviewGrid::releaseImages(const QStringList& filePaths) {
         return;
     }
     if (filePaths.size() < 4) {
-        for (auto* item : m_items) {
+        for (auto* item : std::as_const(m_items)) {
             if (filePaths.contains(item->filePath())) {
                 item->thumbnail()->releaseImage();
             }
         }
         return;
     }
-    const QSet<QString> pathSet(filePaths.begin(), filePaths.end());
-    for (auto* item : m_items) {
+    const QSet<QString> pathSet(filePaths.cbegin(), filePaths.cend());
+    for (auto* item : std::as_const(m_items)) {
         if (pathSet.contains(item->filePath())) {
             item->thumbnail()->releaseImage();
         }
@@ -213,7 +237,9 @@ void ImagePreviewGrid::releaseImages(const QStringList& filePaths) {
 }
 
 void ImagePreviewGrid::clear() {
-    for (auto* item : m_items) {
+    setUpdatesEnabled(false);
+
+    for (auto* item : std::as_const(m_items)) {
         m_gridLayout->removeWidget(item);
         item->deleteLater();
     }
@@ -230,6 +256,8 @@ void ImagePreviewGrid::clear() {
         m_gridLayout->setRowStretch(r, 0);
         m_gridLayout->setRowMinimumHeight(r, 0);
     }
+
+    setUpdatesEnabled(true);
 }
 
 bool ImagePreviewGrid::hasImages() const {
@@ -242,7 +270,7 @@ void ImagePreviewGrid::setBatchInfo(const QString& current, const QString& total
 }
 
 void ImagePreviewGrid::selectAll() {
-    for (auto* item : m_items) {
+    for (auto* item : std::as_const(m_items)) {
         item->thumbnail()->setSelected(true);
     }
     int selectedCount = m_items.size();
@@ -250,7 +278,7 @@ void ImagePreviewGrid::selectAll() {
 }
 
 void ImagePreviewGrid::deselectAll() {
-    for (auto* item : m_items) {
+    for (auto* item : std::as_const(m_items)) {
         item->thumbnail()->setSelected(false);
     }
     emit selectionChanged(0);
@@ -260,12 +288,9 @@ bool ImagePreviewGrid::allSelected() const {
     if (m_items.isEmpty()) {
         return false;
     }
-    for (const auto* item : m_items) {
-        if (!item->thumbnail()->isSelected()) {
-            return false;
-        }
-    }
-    return true;
+    return std::all_of(m_items.cbegin(), m_items.cend(), [](const ThumbnailWithLabel* item) {
+        return item->thumbnail()->isSelected();
+    });
 }
 
 void ImagePreviewGrid::selectSingle(int index) {

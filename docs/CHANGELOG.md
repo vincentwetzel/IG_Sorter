@@ -13,12 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Sorting screen batch flow**: empty groups are skipped automatically, invalid batch sizes are clamped before use, and out-of-range group access is guarded when the queue is exhausted.
 - **Preview grid relayouts**: thumbnail removals now batch layout updates and defer relayout work, which keeps the sorting grid responsive during large deletes or batch transitions.
 - **Cleanup screen rebuilds**: directory progress and resolution widgets are torn down and rebuilt safely between cleanup sessions to avoid stale UI state.
-- **Async sort actions**: file moves, recycle-bin deletes, and undo operations now run off the UI thread and restore the controls only when the background task completes.
+- **Async sort actions**: file moves, recycle-bin deletes, and undo operations run off the UI thread. The sorting screen removes selected thumbnails and advances optimistically, then reconciles its progress count when the operation completes.
 
 ### Removed
 - Removed the Instaloader downloader script, download history, downloader settings, downloaded media, and private-data submodule from this project. Downloader tooling and private data now live outside this repository.
 
 ### Added
+- **Exact-byte duplicate handling in sorting**: same-size source files are compared by SHA-256 before preview; known-person files are also compared with matching-name output files. A detected source duplicate is removed directly with `QFile::remove`, without Recycle Bin recovery or undo. Sorting also rejects blank names before starting file operations.
+- **Sorting UI responsiveness**: selected thumbnails are removed and the next batch is shown before the asynchronous move completes; the progress count is corrected when failures return. Sort tasks are serialized to avoid overlapping operations.
+- **Preview and cleanup efficiency**: preview selection/removal uses standard algorithms and batched/deferred relayouts; cleanup reuses compiled filename matching expressions.
 - **Preview grid responsiveness**: the image preview grid now uses standard algorithms, batched update suppression, and deferred relayouts to avoid layout thrashing when thumbnails are removed in quick succession.
 - **Cleanup resolution lifecycle fixes**: the cleanup screen now clears and recreates resolution rows cleanly, including layout teardown, before showing a new set of unresolved names.
 - **Thumbnail label simplification**: filename labels now slice the display name directly from the path and use a simpler platform-open path for the hyperlink handler.
@@ -121,3 +124,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `run_IG_Sorter.bat`: Windows batch file for easy execution of the main sorting script.
 - Automatic numbering verification and correction for existing sorted files.
 - Interactive console prompts for handling unknown accounts and file types.
+
+
+

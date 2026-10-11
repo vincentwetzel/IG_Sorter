@@ -6,6 +6,8 @@
 #include <QFile>
 #include <QFutureWatcher>
 #include <QHBoxLayout>
+#include <QMutex>
+#include <QMutexLocker>
 #include <QLabel>
 #include <QLocale>
 #include <QMessageBox>
@@ -34,6 +36,8 @@ namespace {
         SortResult result;
         QStringList missingPaths;
     };
+
+    QMutex s_sortMutex;
 }
 
 SortingScreen::SortingScreen(QWidget* parent)
@@ -224,30 +228,41 @@ void SortingScreen::handleSortToFolder(int folderIndex) {
     const FileGroup& group = std::as_const(m_groups)[m_currentGroup];
     QString irlName = group.irlName;
 
-    // If unknown, check if user has entered a name in the text field
-    if (!group.isKnown && irlName.isEmpty()) {
-        QString enteredName = m_sortPanel->getCuratorResolvedName();
+    // If the group has no associated name or name is only whitespace, resolve it
+    if (irlName.trimmed().isEmpty()) {
+        QString enteredName = m_sortPanel->getCuratorResolvedName().trimmed();
         if (enteredName.isEmpty()) {
-            QMessageBox::information(this, "Unknown Account",
-                "Please enter an IRL name for this unknown account before sorting.");
+            QMessageBox::information(this, "Missing Name",
+                "Please enter an IRL name before sorting.");
             return;
         }
 
-        // User entered a name — resolve it automatically
-        AccountType type = AccountType::Personal;
-        switch (m_sortPanel->getUnknownAccountTypeIndex()) {
-        case 1: type = AccountType::Curator; break;
-        case 2: type = AccountType::IrlOnly; break;
-        default: type = AccountType::Personal; break;
-        }
+        if (!group.isKnown) {
+            // User entered a name — resolve it automatically
+            AccountType type = AccountType::Personal;
+            switch (m_sortPanel->getUnknownAccountTypeIndex()) {
+            case 1: type = AccountType::Curator; break;
+            case 2: type = AccountType::IrlOnly; break;
+            default: type = AccountType::Personal; break;
+            }
 
-        // Resolve through the add unknown account handler (prompts for IG account if new)
-        handleAddUnknownAccount(group.accountHandle, enteredName, type);
+            // Resolve through the add unknown account handler (prompts for IG account if new)
+            handleAddUnknownAccount(group.accountHandle, enteredName, type);
 
-        // Read the name from the text field (handleAddUnknownAccount doesn't modify the group)
-        irlName = m_sortPanel->getCuratorResolvedName();
-        if (irlName.isEmpty()) {
-            return;  // User cancelled the Add dialog
+            // Read the name from the text field (handleAddUnknownAccount doesn't modify the group)
+            irlName = m_sortPanel->getCuratorResolvedName().trimmed();
+            if (irlName.isEmpty()) {
+                return;  // User cancelled the Add dialog
+            }
+        } else {
+            // Account is known but has no name in DB (nameless account). Link entered name.
+            irlName = enteredName;
+            if (m_db) {
+                m_db->addEntry(group.accountHandle, irlName, group.accountType);
+                m_db->save();
+                updateGroupsForNewAccount(group.accountHandle);
+                m_sortPanel->refreshCompleter();
+            }
         }
     }
 
@@ -255,12 +270,13 @@ void SortingScreen::handleSortToFolder(int folderIndex) {
     // to enter who is in the photos
     if (group.accountType == AccountType::Curator ||
         group.accountType == AccountType::IrlOnly) {
-        if (!m_sortPanel->isCuratorNameResolved()) {
+        QString enteredName = m_sortPanel->getCuratorResolvedName().trimmed();
+        if (enteredName.isEmpty() || !m_sortPanel->isCuratorNameResolved()) {
             QMessageBox::information(this, "Missing Name",
                 "Please enter who is in these photos before sorting.");
             return;
         }
-        irlName = m_sortPanel->getCuratorResolvedName();
+        irlName = enteredName;
     }
 
     // For IrlOnly accounts: only check if the ACCOUNT needs linking to DB.
@@ -391,15 +407,13 @@ void SortingScreen::handleSortToFolder(int folderIndex) {
     QString outputDir = m_outputFolders[folderIndex].path;
 
     if (m_engine) {
-        // Disable UI first to prevent double-clicks and re-entrancy during event pumping
-        m_sortPanel->setEnabled(false);
-        m_previewGrid->setEnabled(false);
-        m_headerLabel->setText("Sorting file(s)... Please wait.");
-
         // Release image handles from thumbnails before moving files
         // This frees any file handles held by Qt's image readers on Windows
         m_previewGrid->releaseImages(selected);
-        QCoreApplication::processEvents();
+
+        // Optimistically update the UI immediately for instant responsiveness
+        m_previewGrid->removeSelected();
+        m_filesSorted += selected.size();
 
         // Capture necessary variables safely by value
         const QString accountHandle = group.accountHandle;
@@ -408,30 +422,34 @@ void SortingScreen::handleSortToFolder(int folderIndex) {
         const int capturedGroupIndex = m_currentGroup;
         auto* enginePtr = m_engine;
 
+        // Advance to next batch immediately if this one is exhausted
+        if (!m_previewGrid->hasImages()) {
+            m_currentSubBatch++;
+            loadNextBatch();
+        } else {
+            updateHeader();
+        }
+
         auto* watcher = new QFutureWatcher<SortTaskResult>(this);
-        connect(watcher, &QFutureWatcher<SortTaskResult>::finished, this, [=]() {
+        connect(watcher, &QFutureWatcher<SortTaskResult>::finished, this,
+                [this, selected, accountHandle, accountType, capturedGroupIndex, irlName, watcher]() {
             SortTaskResult taskResult = watcher->result();
             SortResult result = taskResult.result;
 
-            m_filesSorted += result.filesSorted;
+            // Adjust optimistic count if any file failed to sort
+            int expectedSorted = selected.size();
+            int actualSorted = result.filesSorted + result.duplicatesRemoved;
+            if (actualSorted < expectedSorted) {
+                m_filesSorted -= (expectedSorted - actualSorted);
+                updateHeader();
+            }
+
             m_errors += result.errors;
             m_errorMessages.append(result.errorMessages);
 
             // Track by account type
             QString typeKey = DatabaseManager::accountTypeToString(accountType);
             m_filesByAccountType[typeKey] += result.filesSorted;
-
-            // Optimize: Bulk remove thumbnails from the UI in a single layout pass if all succeeded.
-            // This eliminates O(N^2) lag caused by individual removePath layout recalculations.
-            if (result.filesSorted == selected.size()) {
-                m_previewGrid->removeSelected();
-            } else {
-                m_previewGrid->setUpdatesEnabled(false);
-                for (const QString& path : std::as_const(taskResult.missingPaths)) {
-                    m_previewGrid->removePath(path);
-                }
-                m_previewGrid->setUpdatesEnabled(true);
-            }
 
             // Save the resolved name to the current group so it persists for any remaining sub-batches
             if (accountType == AccountType::Curator ||
@@ -444,8 +462,10 @@ void SortingScreen::handleSortToFolder(int folderIndex) {
                     m_groups[capturedGroupIndex].isKnown = true;
                 }
 
-                // Update UI immediately in case the sub-batch isn't finished yet
-                m_sortPanel->setAccountInfo(accountHandle, irlName, true, accountType);
+                // Update UI only if we are still on the same group
+                if (m_currentGroup == capturedGroupIndex) {
+                    m_sortPanel->setAccountInfo(accountHandle, irlName, true, accountType);
+                }
                 updateFavoriteButtons();
             }
 
@@ -478,26 +498,16 @@ void SortingScreen::handleSortToFolder(int folderIndex) {
                 QMessageBox::warning(this, "Sort Error", msg);
             }
 
-            // Restore UI Interaction
-            m_sortPanel->setEnabled(true);
-            m_previewGrid->setEnabled(true);
-
-            // If grid is empty, advance to next sub-batch
-            if (!m_previewGrid->hasImages()) {
-                m_currentSubBatch++;
-                loadNextBatch();
-            } else {
-                updateHeader();
-            }
             updateUndoButton();
             watcher->deleteLater();
         });
 
         QFuture<SortTaskResult> future = QtConcurrent::run([selected, accountHandle, irlName, accountType, outputDir, folderName, enginePtr]() {
+            QMutexLocker locker(&s_sortMutex);
             SortTaskResult res;
             res.result = enginePtr->sortFiles(selected, accountHandle, irlName, accountType, outputDir, folderName);
-            
-            if (res.result.filesSorted < selected.size()) {
+
+            if (res.result.filesSorted + res.result.duplicatesRemoved < selected.size()) {
                 for (const QString& path : std::as_const(selected)) {
                     if (!QFile::exists(path)) res.missingPaths.append(path);
                 }
@@ -553,7 +563,7 @@ void SortingScreen::handleDeleteSelected() {
     m_headerLabel->setText("Moving file(s) to Recycle Bin... Please wait.");
 
     auto* watcher = new QFutureWatcher<DeleteResult>(this);
-    connect(watcher, &QFutureWatcher<DeleteResult>::finished, this, [=]() {
+    connect(watcher, &QFutureWatcher<DeleteResult>::finished, this, [this, watcher]() {
         DeleteResult result = watcher->result();
 
         // Remove deleted thumbnails from grid
@@ -587,8 +597,7 @@ void SortingScreen::handleDeleteSelected() {
         DeleteResult res;
         res.failedPaths.reserve(selected.size());
         for (const QString& path : std::as_const(selected)) {
-            QFile file(path);
-            if (file.moveToTrash()) {
+            if (QFile::moveToTrash(path)) {
                 res.deletedCount++;
             } else {
                 res.failedCount++;
@@ -609,7 +618,7 @@ void SortingScreen::handleUndo() {
     auto* enginePtr = m_engine;
 
     auto* watcher = new QFutureWatcher<QStringList>(this);
-    connect(watcher, &QFutureWatcher<QStringList>::finished, this, [=]() {
+    connect(watcher, &QFutureWatcher<QStringList>::finished, this, [this, watcher]() {
         QStringList restoredPaths = watcher->result();
         
         if (!restoredPaths.isEmpty()) {
@@ -642,6 +651,12 @@ void SortingScreen::handleAddUnknownAccount(const QString& account,
                                              const QString& irlName,
                                              AccountType type) {
     if (!m_db) return;
+
+    if (irlName.trimmed().isEmpty()) {
+        QMessageBox::information(this, "Empty Name",
+            "Please enter an IRL name in the text entry field before adding a person.");
+        return;
+    }
 
     // Check if we can proceed without showing the dialog
     bool nameExists = m_db->hasIrlName(irlName);
@@ -818,7 +833,13 @@ void SortingScreen::handleCuratorResolvedName(const QString& irlNameParam) {
     if (m_currentGroup < 0 || m_currentGroup >= m_groups.size()) return;
 
     FileGroup& group = m_groups[m_currentGroup];
-    QString irlName = irlNameParam;
+    QString irlName = irlNameParam.trimmed();
+
+    if (irlName.isEmpty()) {
+        QMessageBox::information(this, "Empty Name",
+            "Please enter who is in these photos in the text entry field.");
+        return;
+    }
 
     if (group.accountType == AccountType::IrlOnly) {
         // IrlOnly: the name entered is the MODEL, not the account owner.

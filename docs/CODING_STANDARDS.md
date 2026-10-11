@@ -6,7 +6,8 @@ This document outlines the coding standards, naming conventions, and best practi
 
 ## 1. Language & Framework Standards
 - **Language:** C++17 or newer.
-- **Framework:** Qt 6 (Core, Widgets, Gui, Concurrent). Add Network only when a feature truly needs HTTP or socket access.
+- **Framework:** Qt 6 (Core, Widgets, Gui, Concurrent), matching the modules currently linked by `IG_Sorter_Qt/CMakeLists.txt`. Add a Qt module only when a feature needs it and update CMake and this document together.
+- **UI strings:** Use QString for application and UI text. Do not introduce std::string into UI code.
 - **Engine Execution:** Heavy operations (e.g., directory parsing, file grouping, duplicate visual matching) must run asynchronously via Qt Concurrent or `QThread` wrappers to keep the main UI responsive.
 
 ---
@@ -148,3 +149,27 @@ This document outlines the coding standards, naming conventions, and best practi
 ---
 
 *By adhering to these rules, we ensure the IG Sorter workspace remains modular, easy to test, and ready for collaborative development.*
+
+## 7. Project-Specific Guidance
+
+### 7.1 Keep behavior and documentation aligned
+
+- Treat `IG_Sorter_Qt/CMakeLists.txt` and the implementation under `IG_Sorter_Qt/src/` as authoritative for the compiled source set and current behavior.
+- When changing a filename pattern, database field/type, user-visible workflow, or duplicate matching rule, update `docs/ARCHITECTURE.md` and the root `README.md` when setup or user behavior is affected.
+- Record user-visible changes in `docs/CHANGELOG.md`. Keep future work in `docs/IMPLEMENTATION_PLAN.md` clearly marked as planned until implemented.
+- Keep private data and downloaded content out of documentation examples that could be mistaken for real user data; use synthetic examples.
+
+### 7.2 Background task boundaries
+
+- Capture immutable values or clearly owned objects when starting `QtConcurrent` work. Do not capture short-lived stack references unless the task lifetime is synchronously bounded and obvious.
+- Do not read or mutate widgets from worker functions. Return results or emit signals, then update the UI through the owning widget's thread.
+- Ensure a watcher and its owning QObject remain valid until the future finishes. Handle cancellation and completion paths so controls and progress state are restored or reconciled, including when the UI advances optimistically.
+- Protect shared state only when it is genuinely accessed concurrently. Prefer task-local state and value results over broad locks.
+
+### 7.3 Build and verification
+
+- Keep the application buildable through the existing CMake project and use C++17 as configured there.
+- The current CMake project does not define a test target. When adding tests, introduce an explicit test target and document how to run it rather than implying tests exist.
+- For changes to file operations, verify the relevant success, collision, and failure paths before describing the behavior as safe. Avoid changing or deleting user data as part of development verification.
+
+

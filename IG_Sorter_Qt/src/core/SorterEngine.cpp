@@ -2,6 +2,9 @@
 #include "core/DatabaseManager.h"
 #include "utils/FileUtils.h"
 #include "utils/LogManager.h"
+#include <algorithm>
+#include <QCryptographicHash>
+#include <QFile>
 #include <QDir>
 #include <QDirIterator>
 #include <QFileInfo>
@@ -9,6 +12,59 @@
 #include <QFutureSynchronizer>
 #include <QMutex>
 #include <QtConcurrent>
+
+namespace {
+    QByteArray getFileHash(const QString& filePath) {
+        QFile file(filePath);
+        if (!file.open(QIODevice::ReadOnly)) return QByteArray();
+        QCryptographicHash hash(QCryptographicHash::Sha256);
+        if (hash.addData(&file)) {
+            return hash.result();
+        }
+        return QByteArray();
+    }
+
+    using DirCache = QHash<QString, QVector<QPair<QString, qint64>>>;
+
+    QString findExactDuplicate(const QString& sourcePath, const QString& irlName, const QStringList& outputDirs, DirCache& dirCache) {
+        QFileInfo sourceInfo(sourcePath);
+        qint64 sourceSize = sourceInfo.size();
+        if (sourceSize <= 0) return QString();
+
+        QString key = irlName.toLower().trimmed();
+        if (!dirCache.contains(key)) {
+            QVector<QPair<QString, qint64>> targetFiles;
+            for (const QString& outDir : outputDirs) {
+                QDir dir(outDir);
+                QStringList filters;
+                filters << QString("%1 *.*").arg(irlName);
+                filters << QString("%1.*").arg(irlName);
+                QFileInfoList infoList = dir.entryInfoList(filters, QDir::Files);
+                for (const QFileInfo& info : infoList) {
+                    targetFiles.append({info.absoluteFilePath(), info.size()});
+                }
+            }
+            dirCache.insert(key, targetFiles);
+        }
+
+        QByteArray sourceHash; // Lazy evaluation
+        const auto& targetFiles = dirCache[key];
+
+        for (const auto& target : targetFiles) {
+            if (target.second == sourceSize) {
+                if (sourceHash.isEmpty()) {
+                    sourceHash = getFileHash(sourcePath);
+                    if (sourceHash.isEmpty()) return QString();
+                }
+                QByteArray targetHash = getFileHash(target.first);
+                if (sourceHash == targetHash) {
+                    return target.first;
+                }
+            }
+        }
+        return QString();
+    }
+}
 
 SorterEngine::SorterEngine(DatabaseManager* db, QObject* parent)
     : QObject(parent), m_db(db), m_cacheDirModTime(0), m_cacheValid(false) {}
@@ -94,6 +150,94 @@ QList<FileGroup> SorterEngine::groupFiles() {
     QList<FileGroup> groups = grouper.group(m_sourceDir);
     LogManager::instance()->info(QString("Found %1 groups").arg(groups.size()));
 
+    // Preemptive deduplication before presenting batches to the user
+    int preDupesRemoved = 0;
+    DirCache dirCache;
+    struct KeptFile {
+        QString filePath;
+        QByteArray hash;
+    };
+    QHash<qint64, QVector<KeptFile>> keptInputFiles;
+
+    for (auto& group : groups) {
+        QStringList nonDuplicatePaths;
+        for (const QString& filePath : group.filePaths) {
+            QFileInfo sourceInfo(filePath);
+            qint64 sourceSize = sourceInfo.size();
+            if (sourceSize <= 0) {
+                nonDuplicatePaths.append(filePath);
+                continue;
+            }
+
+            bool isDupe = false;
+            QString dupeSource;
+
+            // 1. Check if this is an exact duplicate of a file we already decided to keep in this scan
+            if (keptInputFiles.contains(sourceSize)) {
+                QByteArray sourceHash;
+                auto& candidates = keptInputFiles[sourceSize];
+                for (auto& candidate : candidates) {
+                    if (candidate.hash.isEmpty()) {
+                        candidate.hash = getFileHash(candidate.filePath);
+                    }
+                    if (!candidate.hash.isEmpty()) {
+                        if (sourceHash.isEmpty()) {
+                            sourceHash = getFileHash(filePath);
+                        }
+                        if (sourceHash == candidate.hash) {
+                            isDupe = true;
+                            dupeSource = candidate.filePath;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // 2. If it's not a local input dupe, and we have a known IRL name, check the output folders
+            if (!isDupe && !group.irlName.isEmpty()) {
+                QString duplicatePath = findExactDuplicate(filePath, group.irlName, m_outputDirs, dirCache);
+                if (!duplicatePath.isEmpty()) {
+                    isDupe = true;
+                    dupeSource = duplicatePath;
+                }
+            }
+
+            if (isDupe) {
+                LogManager::instance()->info(
+                    QString("[Pre-Sort De-dupe] File %1 is an exact duplicate of %2. Deleting source preemptively.")
+                        .arg(sourceInfo.fileName(), QFileInfo(dupeSource).fileName()));
+                if (QFile::remove(filePath)) {
+                    preDupesRemoved++;
+                } else {
+                    LogManager::instance()->warning(
+                        QString("[Pre-Sort De-dupe] Failed to remove duplicate source file %1").arg(filePath));
+                    nonDuplicatePaths.append(filePath);
+                }
+            } else {
+                nonDuplicatePaths.append(filePath);
+                
+                // Add to our kept input files cache
+                keptInputFiles[sourceSize].append({filePath, QByteArray()});
+
+                // Also populate output dirCache if the group has an IRL name
+                if (!group.irlName.isEmpty()) {
+                    QString key = group.irlName.toLower().trimmed();
+                    if (dirCache.contains(key)) {
+                        dirCache[key].append({filePath, sourceSize});
+                    }
+                }
+            }
+        }
+        group.filePaths = nonDuplicatePaths;
+    }
+
+    if (preDupesRemoved > 0) {
+        LogManager::instance()->info(QString("[Pre-Sort De-dupe] Preemptively removed %1 duplicate files from source directory.").arg(preDupesRemoved));
+        groups.erase(std::remove_if(groups.begin(), groups.end(), [](const FileGroup& g) {
+            return g.filePaths.isEmpty();
+        }), groups.end());
+    }
+
     // Cache the results
     m_cachedGroups = groups;
     updateCache(m_sourceDir);
@@ -110,6 +254,14 @@ SortResult SorterEngine::sortFiles(const QStringList& filePaths,
     Q_UNUSED(accountHandle);
     Q_UNUSED(accountType);
 
+    if (irlName.trimmed().isEmpty()) {
+        SortResult errResult;
+        errResult.errors = filePaths.size();
+        errResult.errorMessages.append("Cannot sort files: IRL name is empty.");
+        LogManager::instance()->error("Failed to sort files: IRL name is empty.");
+        return errResult;
+    }
+
     LogManager::instance()->info(
         QString("Sorting %1 files to %2 as '%3'")
             .arg(filePaths.size()).arg(outputDir).arg(irlName));
@@ -118,6 +270,7 @@ SortResult SorterEngine::sortFiles(const QStringList& filePaths,
     QMutex mutex;
     SortResult result;
     QList<SortOperation::FileMove> fileMoves;
+    DirCache dirCache;
 
     // Run each file move in its own thread.
     // The name generation + file move is done under the mutex to avoid
@@ -125,17 +278,33 @@ SortResult SorterEngine::sortFiles(const QStringList& filePaths,
     QFutureSynchronizer<void> sync;
     for (const QString& filePath : filePaths) {
         sync.addFuture(QtConcurrent::run([&, filePath]() {
-            QString ext;
-            {
-                QFileInfo fi(filePath);
-                ext = fi.suffix();
-                if (!ext.isEmpty()) {
-                    ext = "." + ext;
+            // Name generation + file move must be atomic to avoid duplicate names and race conditions
+            QMutexLocker locker(&mutex);
+
+            QFileInfo sourceInfo(filePath);
+            qint64 sourceSize = sourceInfo.size();
+
+            // Check if an exact duplicate already exists in any of the output directories
+            QString duplicatePath = findExactDuplicate(filePath, irlName, m_outputDirs, dirCache);
+            if (!duplicatePath.isEmpty()) {
+                LogManager::instance()->info(
+                    QString("File %1 is an exact duplicate of already sorted file %2. Deleting source.")
+                        .arg(sourceInfo.fileName(), duplicatePath));
+                if (QFile::remove(filePath)) {
+                    result.duplicatesRemoved++;
+                } else {
+                    result.errors++;
+                    result.errorMessages.append(
+                        QString("Failed to remove duplicate source file %1").arg(sourceInfo.fileName()));
                 }
+                return;
             }
 
-            // Name generation + file move must be atomic to avoid duplicate names
-            QMutexLocker locker(&mutex);
+            QString ext = sourceInfo.suffix();
+            if (!ext.isEmpty()) {
+                ext = "." + ext;
+            }
+
             QString baseName = irlName;
             QString nextName = FileUtils::nextAvailableName(outputDir, baseName, ext);
             QString destFileName = nextName + ext;
@@ -149,10 +318,17 @@ SortResult SorterEngine::sortFiles(const QStringList& filePaths,
                 move.sourcePath = filePath;
                 move.destPath = destPath;
                 fileMoves.append(move);
+
+                // Add the newly sorted file to dirCache so that subsequent duplicate checks
+                // in the same batch can identify identical files.
+                QString key = irlName.toLower().trimmed();
+                if (dirCache.contains(key)) {
+                    dirCache[key].append({destPath, sourceSize});
+                }
             } else {
                 result.errors++;
                 result.errorMessages.append(
-                    QString("Failed to move %1: %2").arg(QFileInfo(filePath).fileName(), errorMsg));
+                    QString("Failed to move %1: %2").arg(sourceInfo.fileName(), errorMsg));
             }
         }));
     }

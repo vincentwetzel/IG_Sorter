@@ -12,6 +12,7 @@
 struct SortResult {
     int filesSorted = 0;
     int filesSkipped = 0;
+    int duplicatesRemoved = 0;
     int errors = 0;
     QStringList errorMessages;
 };

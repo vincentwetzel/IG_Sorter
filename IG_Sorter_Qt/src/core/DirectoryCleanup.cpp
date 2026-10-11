@@ -53,7 +53,7 @@ CleanupReport DirectoryCleanup::cleanupDirectoryInstance(const QString& dirPath)
     };
 
     QList<FileEntry> entries;
-    QRegularExpression nameRegex(R"((.+?)\s+(\d+))");
+    static const QRegularExpression nameRegex(R"((.+?)\s+(\d+))");
 
     int totalFiles = files.size();
     int fileIndex = 0;
@@ -120,12 +120,12 @@ CleanupReport DirectoryCleanup::cleanupDirectoryInstance(const QString& dirPath)
                 tempRenames.append({entry.fullPath, tempPath});
             }
 
-            for (const auto& rename : tempRenames) {
-                if (QFile::exists(rename.second) && !QFile::remove(rename.second)) {
+            for (const auto& [originalPath, tempPath] : tempRenames) {
+                if (QFile::exists(tempPath) && !QFile::remove(tempPath)) {
                     continue;
                 }
-                if (QFile::rename(rename.first, rename.second)) {
-                    LogManager::instance()->logFileRenamed(rename.first, rename.second);
+                if (QFile::rename(originalPath, tempPath)) {
+                    LogManager::instance()->logFileRenamed(originalPath, tempPath);
                 }
             }
 
@@ -135,14 +135,15 @@ CleanupReport DirectoryCleanup::cleanupDirectoryInstance(const QString& dirPath)
                                         .arg(expectedNum)
                                         .arg(personFiles[i].extension);
                 QString finalPath = dirPath + "/" + finalName;
+                const auto& [originalPath, tempPath] = tempRenames[i];
 
                 if (QFile::exists(finalPath) && !QFile::remove(finalPath)) {
                     continue;
                 }
-                if (QFile::rename(tempRenames[i].second, finalPath)) {
+                if (QFile::rename(tempPath, finalPath)) {
                     report.totalFilesRenamed++;
-                    LogManager::instance()->logFileRenamed(tempRenames[i].second, finalPath);
-                    emit fileRenamed(tempRenames[i].first, finalPath);
+                    LogManager::instance()->logFileRenamed(tempPath, finalPath);
+                    emit fileRenamed(originalPath, finalPath);
                 }
 
                 expectedNum++;
@@ -192,7 +193,7 @@ CleanupReport DirectoryCleanup::cleanupDirectory(const QString& dirPath, Databas
     };
 
     QList<FileEntry> entries;
-    QRegularExpression nameRegex(R"((.+?)\s+(\d+))");
+    static const QRegularExpression nameRegex(R"((.+?)\s+(\d+))");
 
     for (const auto& file : files) {
         QFileInfo fi(file);
@@ -237,7 +238,7 @@ CleanupReport DirectoryCleanup::cleanupDirectory(const QString& dirPath, Databas
         int expectedNum = 1;
         bool needsRenaming = false;
 
-        for (auto& entry : personFiles) {
+        for (const auto& entry : personFiles) {
             if (entry.number != expectedNum) {
                 needsRenaming = true;
                 break;
@@ -257,13 +258,13 @@ CleanupReport DirectoryCleanup::cleanupDirectory(const QString& dirPath, Databas
                 tempRenames.append({entry.fullPath, tempPath});
             }
 
-            for (const auto& rename : tempRenames) {
-                if (QFile::exists(rename.second) && !QFile::remove(rename.second)) {
+            for (const auto& [originalPath, tempPath] : tempRenames) {
+                if (QFile::exists(tempPath) && !QFile::remove(tempPath)) {
                     // Could not remove stale temp file — skip this rename
                     continue;
                 }
-                if (QFile::rename(rename.first, rename.second)) {
-                    LogManager::instance()->logFileRenamed(rename.first, rename.second);
+                if (QFile::rename(originalPath, tempPath)) {
+                    LogManager::instance()->logFileRenamed(originalPath, tempPath);
                 }
             }
 
@@ -274,13 +275,14 @@ CleanupReport DirectoryCleanup::cleanupDirectory(const QString& dirPath, Databas
                                         .arg(expectedNum)
                                         .arg(personFiles[i].extension);
                 QString finalPath = dirPath + "/" + finalName;
+                const auto& [originalPath, tempPath] = tempRenames[i];
 
                 if (QFile::exists(finalPath) && !QFile::remove(finalPath)) {
                     continue;
                 }
-                if (QFile::rename(tempRenames[i].second, finalPath)) {
+                if (QFile::rename(tempPath, finalPath)) {
                     report.totalFilesRenamed++;
-                    LogManager::instance()->logFileRenamed(tempRenames[i].second, finalPath);
+                    LogManager::instance()->logFileRenamed(tempPath, finalPath);
                 }
 
                 expectedNum++;

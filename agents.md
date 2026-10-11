@@ -78,3 +78,8 @@ All C++ code in the Qt application MUST follow these standards:
 - **Utility classes** (`utils/`): ConfigManager, LogManager, ThemeManager, FileUtils, WebpDecoder
 - All UI classes use dependency injection where practical
 - Long-running operations run on background threads with progress signals
+
+
+## Project Documentation
+
+Project documentation is maintained under `docs/`. Keep the root `README.md` as the setup entry point and keep this `AGENTS.md` at the repository root for tool discovery.
