@@ -96,5 +96,7 @@ private:
     QMap<QString, int> m_filesByAccountType;  // "Personal"/"Curator" -> count
 
     // Quick-fill name tracking (leaderboard for IrlOnly sources)
-    QMap<QString, int> m_nameCounts;   // IRL name → usage count
+    QMap<QString, int> m_nameCounts;   // IRL name → sorted photo count
+    QMap<QString, quint64> m_nameLastUsed; // Most recently used names sort last when counts tie
+    quint64 m_nameUseSequence = 0;
 };

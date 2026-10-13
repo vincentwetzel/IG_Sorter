@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Unknown-file grouping**: unknown filename types start as individual files and are combined only when they share a directory and have creation/save times within five seconds of the cluster's first file; files without a usable timestamp remain separate.
 - **Favorite quick-fill layout**: buttons stay on one row and overflow entries are hidden when the panel is too narrow. Name ghost completion is limited to typing at the end of the field.
 - **Database persistence**: JSON saves now use an atomic file replacement, and updates reject duplicate account handles or duplicate name-only aliases already represented by an account-backed entry.
-- **Sorting name resolution**: an entered name takes precedence over the group's stored name for the current sort. Curator and IRL-only batch names are not saved as name-only database entries, and screenshot source labels do not trigger Instagram account-link prompts.
+- **Sorting name resolution**: an entered name takes precedence over the group's stored name for the current sort. Sorting requires a database identity (a recognized account or person name for Personal groups, and a matching person name for Curator/IRL-only groups). Confirming a new IRL-only person adds a name-only entry; typing a name alone does not. Screenshot source labels do not trigger Instagram account-link prompts.
 - **Cleanup duplicate-name handling**: resolving an output-folder name already present in the database no longer adds a duplicate name-only entry.
 - **Person-name normalization**: names are compatibility-normalized and trimmed when entered or stored, so stylized Unicode characters such as mathematical alphabets resolve consistently with ordinary text.
 - **Sort undo coordination**: Undo is disabled while sort tasks are pending and serialized with sorting. After restoring files, the preview returns to their batch, skips files that remain sorted, and subtracts restored files from the sorted count.
@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Sorting group consolidation**: posts are combined across post boundaries only for known Personal accounts; Curator and IRL-only groups remain separate for per-batch name entry.
 - **Sorting preview layout**: favorite-name quick-fill buttons hide overflow at narrower panel widths, and selection borders/checkmarks stay aligned with the displayed image rather than the full thumbnail cell.
 - **Continue button theme styling**: added matching enabled, hover, and pressed states in the light and dark themes.
-- **Favorite-name quick-fill feedback**: the selected name's usage count updates as soon as sorting starts, then rolls back if every selected file operation fails.
+- **Favorite-name quick-fill feedback**: counts track successfully handled photos, are corrected after partial failures, and use recency as a tie-breaker so less recently used names appear first.
 - **Output cleanup concurrency**: configured output directories are cleaned in parallel on a dedicated thread pool, with per-directory progress and completion updates.
 - **Screen navigation**: added screen history and mouse Back-button navigation, while returning to the menu resets the history.
 - **Known Curator and IRL-only accounts**: these account types remain recognized when their stored name is empty; the sorting name is supplied per batch.

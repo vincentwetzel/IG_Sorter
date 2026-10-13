@@ -9,8 +9,8 @@ This document is a maintained snapshot of the current application plus follow-up
 - Filename parsing for Instaloader-style Instagram media, TikTok slideshow IDs, Facebook media timestamps, Twitter/X timestamps, and Instagram/Snapchat/Chrome Android screenshots.
 - JSON people database with Personal, Curator, and IRL-only entry types, case-insensitive account lookup, editing, and incremental lookup indexing.
 - Configurable source and ordered destination folders, database path, preview batch size, and theme.
-- Preview selection and sub-batching, unknown account/person flows, favorites, add-person handling, and account cleanup with search, missing-name filtering, inline edits, and entry removal.
-- Favorite-name quick-fill counts update when a sort starts and roll back when all selected file operations fail.
+- Preview selection and sub-batching, unknown account/person flows, favorites, add-person handling, and account cleanup with search, missing-name filtering, inline edits, and entry removal. Sorting requires a matching database identity; confirming a new IRL-only person creates a name-only database entry.
+- Favorite-name quick-fill counts track successfully handled photos, correct partial failures, and favor less recently used names when photo counts tie.
 - Output numbering cleanup, extension correction, safe file movement, undo for recent sort moves, and report summaries.
 - Exact-byte duplicate checks when sorting batches; confirmed output duplicates are still removed directly from the source with `QFile::remove`.
 - Asynchronous source discovery with progress reporting, output cleanup, sorting file actions, deletion, and undo paths to keep the UI responsive. The sorting screen receives completed groups after scanning and consolidating posts for known Personal accounts; Curator and IRL-only groups stay separate, while unknown files may be grouped by save-time proximity within one directory.

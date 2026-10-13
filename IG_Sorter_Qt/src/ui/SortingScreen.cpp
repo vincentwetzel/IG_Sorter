@@ -122,6 +122,8 @@ void SortingScreen::setGroups(const QList<FileGroup>& groups) {
     m_newAccountsAdded.clear();
     m_filesByAccountType.clear();
     m_nameCounts.clear();
+    m_nameLastUsed.clear();
+    m_nameUseSequence = 0;
 
     if (!m_groups.isEmpty()) {
         while (m_currentGroup < m_groups.size() && m_groups[m_currentGroup].filePaths.isEmpty()) {
@@ -152,6 +154,8 @@ void SortingScreen::beginStreamingGroups() {
     m_newAccountsAdded.clear();
     m_filesByAccountType.clear();
     m_nameCounts.clear();
+    m_nameLastUsed.clear();
+    m_nameUseSequence = 0;
     m_previewGrid->clear();
     m_previewGrid->setEnabled(false);
     m_sortPanel->setEnabled(false);
@@ -492,6 +496,24 @@ void SortingScreen::handleSortToFolder(int folderIndex) {
         }
     }
 
+    // Typing a name is not enough to establish who the photos belong to.
+    // Require a database identity before any files are moved: a real Instagram
+    // account can identify a Personal batch, while Curator/IRL Only batches
+    // need the person in the photos to be present by name in the database.
+    const bool hasDatabaseAccount = m_db &&
+        group.sourceType == SourceType::Instagram &&
+        !group.accountHandle.trimmed().isEmpty() &&
+        m_db->hasAccount(group.accountHandle);
+    const bool hasDatabaseName = m_db && m_db->hasIrlName(irlName);
+    const bool hasDatabaseIdentity = group.accountType == AccountType::Personal
+        ? (hasDatabaseAccount || hasDatabaseName)
+        : hasDatabaseName;
+    if (!hasDatabaseIdentity) {
+        QMessageBox::information(this, "Person Not In Database",
+            "Add this account or an IRL name only entry to the database before sorting.");
+        return;
+    }
+
     QString outputDir = m_outputFolders[folderIndex].path;
 
     if (m_engine) {
@@ -501,11 +523,16 @@ void SortingScreen::handleSortToFolder(int folderIndex) {
         m_undoButton->setEnabled(false);
 
         // Show the selected name immediately instead of waiting for the
-        // background file operations to finish. If the entire sort fails,
-        // the completion handler removes this provisional usage count.
+        // background file operations to finish. If any files fail to sort,
+        // the completion handler corrects this provisional photo count.
         const bool hasQuickFillName = !irlName.trimmed().isEmpty();
+        const quint64 previousNameUse = hasQuickFillName
+            ? m_nameLastUsed.value(irlName, 0) : 0;
+        quint64 provisionalNameUse = 0;
         if (hasQuickFillName) {
-            m_nameCounts[irlName]++;
+            m_nameCounts[irlName] += selected.size();
+            provisionalNameUse = ++m_nameUseSequence;
+            m_nameLastUsed[irlName] = provisionalNameUse;
             updateFavoriteButtons();
         }
 
@@ -534,12 +561,13 @@ void SortingScreen::handleSortToFolder(int folderIndex) {
 
         auto* watcher = new QFutureWatcher<SortTaskResult>(this);
         connect(watcher, &QFutureWatcher<SortTaskResult>::finished, this,
-                [this, selected, accountHandle, accountType, capturedGroupIndex, irlName, watcher]() {
+                [this, selected, accountHandle, accountType, capturedGroupIndex, irlName,
+                 previousNameUse, provisionalNameUse, watcher]() {
             m_pendingSortTasks = qMax(0, m_pendingSortTasks - 1);
             SortTaskResult taskResult = watcher->result();
             SortResult result = taskResult.result;
 
-            // Adjust optimistic count if any file failed to sort
+            // Adjust the optimistic photo count for files that did not sort.
             int expectedSorted = selected.size();
             int actualSorted = result.filesSorted + result.duplicatesRemoved;
             if (actualSorted < expectedSorted) {
@@ -547,19 +575,31 @@ void SortingScreen::handleSortToFolder(int folderIndex) {
                 updateHeader();
             }
 
+            if (actualSorted < expectedSorted && !irlName.trimmed().isEmpty()) {
+                auto countIt = m_nameCounts.find(irlName);
+                if (countIt != m_nameCounts.end()) {
+                    countIt.value() -= expectedSorted - actualSorted;
+                    if (countIt.value() <= 0) {
+                        m_nameCounts.erase(countIt);
+                        m_nameLastUsed.remove(irlName);
+                    }
+                }
+            }
+
             m_errors += result.errors;
             m_errorMessages.append(result.errorMessages);
 
-            // Remove the provisional name entry if the whole sort failed.
+            // Restore the previous tie-break position if the whole sort failed.
             if (actualSorted == 0 && !irlName.trimmed().isEmpty()) {
-                auto countIt = m_nameCounts.find(irlName);
-                if (countIt != m_nameCounts.end()) {
-                    if (countIt.value() <= 1) {
-                        m_nameCounts.erase(countIt);
+                if (m_nameLastUsed.value(irlName, 0) == provisionalNameUse) {
+                    if (m_nameCounts.contains(irlName)) {
+                        m_nameLastUsed[irlName] = previousNameUse;
                     } else {
-                        --countIt.value();
+                        m_nameLastUsed.remove(irlName);
                     }
                 }
+                updateFavoriteButtons();
+            } else if (actualSorted < expectedSorted) {
                 updateFavoriteButtons();
             }
 
@@ -992,6 +1032,12 @@ void SortingScreen::handleCuratorResolvedName(const QString& irlNameParam,
     }
 
     if (group.accountType == AccountType::IrlOnly) {
+        if (!m_db) {
+            QMessageBox::warning(this, "Database Unavailable",
+                "Load an account database before adding a person.");
+            return;
+        }
+
         // IrlOnly: the name entered is the MODEL, not the account owner.
         // Only link a real Instagram download handle. Screenshot source labels
         // (for example "Instagram") are not user accounts.
@@ -1013,6 +1059,25 @@ void SortingScreen::handleCuratorResolvedName(const QString& irlNameParam,
                 return;  // User cancelled
             }
         }
+
+        // The batch subject must have a database identity of its own. Add a
+        // name-only row when the user confirms a new subject with the Enter
+        // button; typing into the field alone never creates a database entry.
+        if (!m_db->hasIrlName(irlName)) {
+            if (!m_db->addEntry(QString(), irlName, AccountType::IrlOnly)) {
+                QMessageBox::warning(this, "Add Failed",
+                    QString("Could not add \"%1\" to the database.").arg(irlName));
+                return;
+            }
+            if (!m_db->save()) {
+                QMessageBox::warning(this, "Save Failed",
+                    "Could not save the new IRL name to the database.");
+                return;
+            }
+            m_sortPanel->refreshCompleter();
+            m_newAccountsAdded.append(QString("(no account) → %1 (irl_only)").arg(irlName));
+        }
+
         // For IrlOnly, the name is per-batch (model name). Don't persist it to group.
         // Just update the UI to reflect the name for this batch.
         m_sortPanel->setAccountInfo(group.accountHandle, irlName, true,
@@ -1149,16 +1214,20 @@ void SortingScreen::updateFavoriteButtons() {
     struct NameCount {
         QString name;
         int count;
+        quint64 lastUsed;
     };
     QList<NameCount> sorted;
     sorted.reserve(m_nameCounts.size());
     for (const auto& [name, count] : std::as_const(m_nameCounts).asKeyValueRange()) {
-        sorted.append({name, count});
+        sorted.append({name, count, m_nameLastUsed.value(name, 0)});
     }
 
     std::sort(sorted.begin(), sorted.end(),
                       [](const NameCount& a, const NameCount& b) {
-                          return a.count > b.count;
+                          if (a.count != b.count) {
+                              return a.count > b.count;
+                          }
+                          return a.lastUsed < b.lastUsed;
                       });
 
     QStringList topNames;

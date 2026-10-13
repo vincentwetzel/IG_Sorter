@@ -10,7 +10,8 @@ IG_Sorter is a Qt 6 desktop application for reviewing, identifying, sorting, and
 - Supports Personal, Curator, and IRL-only database entries, unknown-account handling, and account cleanup.
 - Normalizes person names with Unicode NFKC and trims surrounding whitespace, including compatibility-styled letters such as Instagram's mathematical alphabet.
 - For Curator batches, lets you enter the person shown and choose the person’s account type beside **Add Person**; adding a person does not treat the curator’s source account as the person’s account.
-- Updates favorite-name quick-fill counts as sorting starts, and rolls back the update if the entire sort action fails. Favorite buttons stay on one row and hide entries that do not fit the available width.
+- Tracks favorite-name quick-fill counts by successfully handled photos, corrects them after partial failures, and favors less recently used names when counts tie. Buttons stay on one row and hide entries that do not fit the available width.
+- Requires a database identity before moving files: Personal batches need a recognized account or person name; Curator and IRL-only batches need the person in the photos listed by name. Confirming a new IRL-only person adds a name-only database entry.
 - Recognizes Curator and IRL-only source accounts without requiring a stored name. Account cleanup supports searching, filtering entries without names, editing multiple entries, and removing a selected entry.
 - Runs output-directory cleanup concurrently and supports the mouse Back button across application screens.
 - Includes a Duplicate Finder for reviewing likely matches in configured output folders, with a detailed image-similarity verification step, user-confirmed Recycle Bin deletion, and undo. The sorting pipeline also removes some exact-byte source duplicates automatically; see [duplicate handling](docs/ARCHITECTURE.md#duplicate-matching-and-file-removal).
@@ -53,6 +54,8 @@ The account database is a JSON array. Each record uses `name`, `account`, and `t
 ```
 
 Treat the database as private user data. Keep it outside the repository and select it in Settings.
+
+Before a batch can be sorted, its account or the person name entered for the batch must identify someone in the selected database. For a new IRL-only person, use **Add Person** to create the name-only entry; typing a name alone does not add it. See [the sorting workflow](docs/ARCHITECTURE.md#workflow) for details.
 
 ## Duplicate handling and file removal
 
