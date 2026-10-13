@@ -304,11 +304,14 @@ void SortingScreen::handleSortToFolder(int folderIndex) {
     }
 
     const FileGroup& group = std::as_const(m_groups)[m_currentGroup];
-    QString irlName = group.irlName;
+    // The name field can be edited even when the account already has a
+    // database name. Prefer that current input for this sort; fall back to
+    // the group's resolved name when the field is blank.
+    const QString enteredName = m_sortPanel->getCuratorResolvedName().trimmed();
+    QString irlName = enteredName.isEmpty() ? group.irlName : enteredName;
 
     // If the group has no associated name or name is only whitespace, resolve it
     if (irlName.trimmed().isEmpty()) {
-        QString enteredName = m_sortPanel->getCuratorResolvedName().trimmed();
         if (enteredName.isEmpty()) {
             QMessageBox::information(this, "Missing Name",
                 "Please enter an IRL name before sorting.");
@@ -333,9 +336,13 @@ void SortingScreen::handleSortToFolder(int folderIndex) {
                 return;  // User cancelled the Add dialog
             }
         } else {
-            // Account is known but has no name in DB (nameless account). Link entered name.
+            // A Personal Instagram account can be nameless in the DB, so link
+            // this entered name to its real handle. For Curator and IRL Only
+            // sources, the entered name is the model in this batch, not the
+            // source account's identity; never persist it as a name-only row.
             irlName = enteredName;
-            if (m_db) {
+            if (m_db && group.accountType == AccountType::Personal
+                && !group.accountHandle.isEmpty()) {
                 m_db->addEntry(group.accountHandle, irlName, group.accountType);
                 m_db->save();
                 updateGroupsForNewAccount(group.accountHandle);
@@ -361,8 +368,11 @@ void SortingScreen::handleSortToFolder(int folderIndex) {
     // The name entered is the MODEL's name — don't do DB lookup on it.
     // For Curator accounts: check if model name exists and prompt to link if needed.
     if (group.accountType == AccountType::IrlOnly) {
-        // IrlOnly: just check if the account handle needs to be added to DB
-        bool accountNeedsLinking = !group.accountHandle.isEmpty() && m_db &&
+        // Only an Instagram download's handle is a real account. Android
+        // screenshots use labels such as "Instagram" for the source app; that
+        // label must never trigger an Add Person prompt.
+        bool accountNeedsLinking = group.sourceType == SourceType::Instagram &&
+                                   !group.accountHandle.isEmpty() && m_db &&
                                    !m_db->hasAccount(group.accountHandle);
         if (accountNeedsLinking) {
             // Show dialog to add the photographer account (empty name, just account)
@@ -983,9 +993,10 @@ void SortingScreen::handleCuratorResolvedName(const QString& irlNameParam,
 
     if (group.accountType == AccountType::IrlOnly) {
         // IrlOnly: the name entered is the MODEL, not the account owner.
-        // Don't do DB lookup on the model name — just check if the account
-        // handle (photographer) needs to be added to DB.
-        bool accountNeedsLinking = !group.accountHandle.isEmpty() && m_db &&
+        // Only link a real Instagram download handle. Screenshot source labels
+        // (for example "Instagram") are not user accounts.
+        bool accountNeedsLinking = group.sourceType == SourceType::Instagram &&
+                                   !group.accountHandle.isEmpty() && m_db &&
                                    !m_db->hasAccount(group.accountHandle);
         if (accountNeedsLinking) {
             // Show dialog to add the photographer account
@@ -1145,16 +1156,14 @@ void SortingScreen::updateFavoriteButtons() {
         sorted.append({name, count});
     }
 
-    constexpr int maxFavorites = 15;
-    const int numToSort = qMin(static_cast<int>(sorted.size()), maxFavorites);
-    std::partial_sort(sorted.begin(), sorted.begin() + numToSort, sorted.end(),
+    std::sort(sorted.begin(), sorted.end(),
                       [](const NameCount& a, const NameCount& b) {
                           return a.count > b.count;
                       });
 
     QStringList topNames;
-    topNames.reserve(numToSort);
-    for (int i = 0; i < numToSort; ++i) {
+    topNames.reserve(sorted.size());
+    for (int i = 0; i < sorted.size(); ++i) {
         topNames.append(std::move(sorted[i].name));
     }
 

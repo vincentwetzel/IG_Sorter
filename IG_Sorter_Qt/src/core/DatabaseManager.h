@@ -45,6 +45,7 @@ public:
     const QList<PersonEntry>& allEntries() const;
     bool        addEntry(const QString& account, const QString& irlName, AccountType type);
     bool        removeEntry(const QString& account);
+    bool        removeEntryByIndex(int index);
     bool        updateEntry(const QString& oldAccount, const QString& newAccount,
                             const QString& newName, AccountType newType);
     bool        updateEntryByIndex(int index, const QString& newAccount,

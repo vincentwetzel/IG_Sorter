@@ -17,6 +17,7 @@
 
 // Time window in seconds for merging screenshot groups taken close together
 static const int SCREENSHOT_MERGE_WINDOW_SEC = 15;
+static const qint64 UNKNOWN_FILE_MERGE_WINDOW_MSEC = 5 * 1000;
 
 static const QSet<QString>& supportedImageExtensions() {
     static const QSet<QString> extensions = {
@@ -111,6 +112,70 @@ static void mergePersonalPostsByAccount(QList<FileGroup>& groups) {
     groups = std::move(mergedGroups);
 }
 
+static void mergeUnknownFilesBySaveTime(QList<FileGroup>& groups) {
+    struct Candidate {
+        FileGroup group;
+        QString directory;
+        QDateTime savedAt;
+    };
+
+    QList<FileGroup> result;
+    QList<Candidate> candidates;
+    for (const FileGroup& group : std::as_const(groups)) {
+        if (group.accountHandle != "Unknown" || group.isKnown ||
+            group.sourceType != SourceType::Unknown) {
+            result.append(group);
+            continue;
+        }
+
+        // Unknown files are initially separate. Split each path here so this
+        // stays safe even if another grouping path supplied a multi-file group.
+        for (const QString& path : group.filePaths) {
+            const QFileInfo fileInfo(path);
+            QDateTime savedAt = fileInfo.birthTime();
+            if (!savedAt.isValid()) {
+                savedAt = fileInfo.lastModified();
+            }
+
+            if (!savedAt.isValid()) {
+                result.append(group);
+                result.last().filePaths = QStringList{path};
+                continue;
+            }
+
+            Candidate candidate;
+            candidate.group = group;
+            candidate.group.filePaths = QStringList{path};
+            candidate.directory = QDir::cleanPath(fileInfo.absolutePath());
+            candidate.savedAt = savedAt;
+            candidates.append(candidate);
+        }
+    }
+
+    std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) {
+        const int directoryOrder = QString::compare(a.directory, b.directory, Qt::CaseInsensitive);
+        if (directoryOrder != 0) {
+            return directoryOrder < 0;
+        }
+        return a.savedAt < b.savedAt;
+    });
+
+    int index = 0;
+    while (index < candidates.size()) {
+        Candidate cluster = candidates[index++];
+        const QDateTime clusterStart = cluster.savedAt;
+        while (index < candidates.size() &&
+               candidates[index].directory.compare(cluster.directory, Qt::CaseInsensitive) == 0 &&
+               clusterStart.msecsTo(candidates[index].savedAt) <= UNKNOWN_FILE_MERGE_WINDOW_MSEC) {
+            cluster.group.filePaths.append(candidates[index].group.filePaths);
+            ++index;
+        }
+        result.append(cluster.group);
+    }
+
+    groups = std::move(result);
+}
+
 FileGrouper::FileGrouper(DatabaseManager* db, QObject* parent)
     : QObject(parent), m_db(db) {}
 
@@ -148,11 +213,13 @@ QList<FileGroup> FileGrouper::group(const QString& sourceDir) {
             postTimestamp = parsed.postTimestamp;
             key = accountHandle + "|||" + postTimestamp;
         } else {
-            // Unknown file type — group by parent directory
+            // Unknown filenames have no reliable account or post identifier.
+            // Keep each file separate rather than treating its folder as an
+            // account, which can combine unrelated people into one batch.
             accountHandle = "Unknown";
             QFileInfo fi(filePath);
             postTimestamp = fi.dir().dirName();
-            key = "Unknown|||" + postTimestamp;
+            key = "Unknown|||" + QDir::cleanPath(fi.absoluteFilePath());
         }
 
         auto itGroup = groupIndex.find(key);
@@ -160,6 +227,7 @@ QList<FileGroup> FileGrouper::group(const QString& sourceDir) {
             FileGroup group;
             group.accountHandle = accountHandle;
             group.postTimestamp = postTimestamp;
+            group.sourceType = parsed.sourceEnum;
 
             resolveGroupAccount(group, parsed, m_db);
 
@@ -257,6 +325,10 @@ QList<FileGroup> FileGrouper::group(const QString& sourceDir) {
         }
     }
 
+    // Unknown names have no account key; use save-time proximity within each
+    // directory as a conservative heuristic for files downloaded together.
+    mergeUnknownFilesBySaveTime(groups);
+
     // Combine known personal-account posts so batches can span post boundaries.
     // Curator and IrlOnly posts stay separate because each may need its own name.
     mergePersonalPostsByAccount(groups);
@@ -290,8 +362,9 @@ QList<FileGroup> FileGrouper::groupStreaming(const QString& sourceDir) {
                 key = accountHandle + "|||" + postTimestamp;
             } else {
                 accountHandle = "Unknown";
-                postTimestamp = QFileInfo(filePath).dir().dirName();
-                key = "Unknown|||" + postTimestamp;
+                const QFileInfo fileInfo(filePath);
+                postTimestamp = fileInfo.dir().dirName();
+                key = "Unknown|||" + QDir::cleanPath(fileInfo.absoluteFilePath());
             }
 
             auto it = groupIndex.find(key);
@@ -299,6 +372,7 @@ QList<FileGroup> FileGrouper::groupStreaming(const QString& sourceDir) {
                 FileGroup group;
                 group.accountHandle = accountHandle;
                 group.postTimestamp = postTimestamp;
+                group.sourceType = parsed.sourceEnum;
                 resolveGroupAccount(group, parsed, m_db);
                 it = groupIndex.insert(key, chunkGroups.size());
                 chunkGroups.append(group);
@@ -361,6 +435,7 @@ QList<FileGroup> FileGrouper::groupStreaming(const QString& sourceDir) {
 
     // A later chunk may contain more posts from an account already seen, so
     // wait until scanning is complete before emitting consolidated groups.
+    mergeUnknownFilesBySaveTime(allGroups);
     mergePersonalPostsByAccount(allGroups);
     if (!allGroups.isEmpty()) {
         emit groupsReady(allGroups);

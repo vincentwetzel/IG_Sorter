@@ -1,244 +1,354 @@
 #include "ui/CleanUpAccountsScreen.h"
+
 #include "core/DatabaseManager.h"
-#include <QVBoxLayout>
-#include <QHBoxLayout>
-#include <QLabel>
-#include <QPushButton>
-#include <QListWidget>
-#include <QListWidgetItem>
-#include <QAbstractItemView>
-#include <QLineEdit>
+
+#include <QCheckBox>
 #include <QComboBox>
+#include <QFont>
+#include <QHBoxLayout>
+#include <QHeaderView>
+#include <QItemSelectionModel>
+#include <QLabel>
+#include <QLineEdit>
 #include <QMessageBox>
-#include <QScrollArea>
+#include <QPushButton>
+#include <QStyledItemDelegate>
+#include <QTableView>
+#include <QVBoxLayout>
 
-// ─── AccountEditRow ─────────────────────────────────────────────────────────
+namespace {
+enum AccountColumn {
+    AccountColumnIndex = 0,
+    NameColumnIndex,
+    TypeColumnIndex,
+    AccountColumnCount
+};
 
-AccountEditRow::AccountEditRow(int dbIndex, const QString& account, const QString& currentName,
-                               DatabaseManager* db, QWidget* parent)
-    : QWidget(parent), m_dbIndex(dbIndex), m_account(account), m_db(db),
-      m_nameEdit(nullptr), m_typeCombo(nullptr), m_saveButton(nullptr)
-{
-    auto* layout = new QHBoxLayout(this);
-    layout->setContentsMargins(8, 4, 8, 4);
-    layout->setSpacing(12);
+class AccountTypeDelegate : public QStyledItemDelegate {
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
 
-    // Account handle label (fixed width)
-    auto* accountLabel = new QLabel(account.isEmpty() ? "(no account)" : account, this);
-    accountLabel->setMinimumWidth(200);
-    accountLabel->setMaximumWidth(250);
-    QFont accountFont = accountLabel->font();
-    accountFont.setBold(true);
-    accountLabel->setFont(accountFont);
-    layout->addWidget(accountLabel);
-
-    // Name input
-    m_nameEdit = new QLineEdit(currentName, this);
-    m_nameEdit->setPlaceholderText("Enter IRL name...");
-    m_nameEdit->setMinimumWidth(200);
-    layout->addWidget(m_nameEdit, 1);
-
-    // Account type combo
-    m_typeCombo = new QComboBox(this);
-    m_typeCombo->addItem("Personal");
-    m_typeCombo->addItem("Curator");
-    m_typeCombo->addItem("IRL Only");
-
-    // Set current type
-    auto entry = m_db->getEntry(account.toLower());
-    int typeIndex = 0;  // Personal
-    switch (entry.type) {
-    case AccountType::Curator:  typeIndex = 1; break;
-    case AccountType::IrlOnly:  typeIndex = 2; break;
-    default: break;
+    QWidget* createEditor(QWidget* parent, const QStyleOptionViewItem&,
+                          const QModelIndex&) const override {
+        auto* combo = new QComboBox(parent);
+        combo->addItems({"Personal", "Curator", "IRL Only"});
+        return combo;
     }
-    m_typeCombo->setCurrentIndex(typeIndex);
-    layout->addWidget(m_typeCombo);
 
-    // Save button
-    m_saveButton = new QPushButton("Save", this);
-    m_saveButton->setFixedWidth(100);
-    connect(m_saveButton, &QPushButton::clicked, this, [this]() {
-        apply();
-    });
-    layout->addWidget(m_saveButton);
+    void setEditorData(QWidget* editor, const QModelIndex& index) const override {
+        auto* combo = qobject_cast<QComboBox*>(editor);
+        if (combo) combo->setCurrentIndex(index.data(Qt::EditRole).toInt());
+    }
+
+    void setModelData(QWidget* editor, QAbstractItemModel* model,
+                      const QModelIndex& index) const override {
+        auto* combo = qobject_cast<QComboBox*>(editor);
+        if (combo) model->setData(index, combo->currentIndex(), Qt::EditRole);
+    }
+};
 }
 
-bool AccountEditRow::apply() {
-    QString newName = m_nameEdit->text().trimmed();
-    if (newName.isEmpty()) {
-        QMessageBox::warning(this, "Empty Name",
-            "Please enter a name for this account.");
+AccountEntryModel::AccountEntryModel(DatabaseManager* db, QObject* parent)
+    : QAbstractTableModel(parent), m_db(db) {
+    reload();
+}
+
+int AccountEntryModel::rowCount(const QModelIndex& parent) const {
+    return parent.isValid() ? 0 : static_cast<int>(m_entries.size());
+}
+
+int AccountEntryModel::columnCount(const QModelIndex& parent) const {
+    return parent.isValid() ? 0 : AccountColumnCount;
+}
+
+QVariant AccountEntryModel::data(const QModelIndex& index, int role) const {
+    if (!index.isValid() || index.row() < 0 || index.row() >= m_entries.size()) {
+        return {};
+    }
+
+    const auto& entry = m_entries[index.row()];
+    if (role == Qt::EditRole) {
+        switch (index.column()) {
+        case AccountColumnIndex: return entry.account;
+        case NameColumnIndex: return entry.irlName;
+        case TypeColumnIndex: return entry.type;
+        default: return {};
+        }
+    }
+    if (role != Qt::DisplayRole) return {};
+
+    switch (index.column()) {
+    case AccountColumnIndex: return entry.account.isEmpty() ? QString("(no account)") : entry.account;
+    case NameColumnIndex: return entry.irlName;
+    case TypeColumnIndex:
+        switch (static_cast<AccountType>(entry.type)) {
+        case AccountType::Personal: return QString("Personal");
+        case AccountType::Curator: return QString("Curator");
+        case AccountType::IrlOnly: return QString("IRL Only");
+        }
+        return {};
+    default: return {};
+    }
+}
+
+QVariant AccountEntryModel::headerData(int section, Qt::Orientation orientation, int role) const {
+    if (orientation != Qt::Horizontal || role != Qt::DisplayRole) return {};
+    switch (section) {
+    case AccountColumnIndex: return QString("Account");
+    case NameColumnIndex: return QString("IRL Name");
+    case TypeColumnIndex: return QString("Type");
+    default: return {};
+    }
+}
+
+Qt::ItemFlags AccountEntryModel::flags(const QModelIndex& index) const {
+    if (!index.isValid()) return Qt::NoItemFlags;
+    return QAbstractTableModel::flags(index) | Qt::ItemIsEditable;
+}
+
+bool AccountEntryModel::setData(const QModelIndex& index, const QVariant& value, int role) {
+    if (!index.isValid() || role != Qt::EditRole
+        || index.row() < 0 || index.row() >= m_entries.size()) {
         return false;
     }
 
-    AccountType newType = AccountType::Personal;
-    switch (m_typeCombo->currentIndex()) {
-    case 1: newType = AccountType::Curator; break;
-    case 2: newType = AccountType::IrlOnly; break;
+    auto& entry = m_entries[index.row()];
+    switch (index.column()) {
+    case AccountColumnIndex: {
+        const QString account = value.toString().trimmed();
+        if (entry.account == account) return true;
+        entry.account = account;
+        break;
+    }
+    case NameColumnIndex: {
+        const QString name = value.toString().trimmed();
+        if (entry.irlName == name) return true;
+        entry.irlName = name;
+        break;
+    }
+    case TypeColumnIndex: {
+        const int type = value.toInt();
+        if (type < 0 || type > 2) return false;
+        if (entry.type == type) return true;
+        entry.type = type;
+        if (type == static_cast<int>(AccountType::IrlOnly)) {
+            entry.account.clear();
+        }
+        break;
+    }
+    default:
+        return false;
     }
 
-    bool ok = m_db->updateEntryByIndex(m_dbIndex, m_account, newName, newType);
-    if (ok) {
-        // Visual feedback — green button with checkmark
-        m_saveButton->setText("✓ Saved");
-        m_saveButton->setStyleSheet(
-            "QPushButton { background-color: #4caf50; color: white; font-weight: bold; }");
-        m_saveButton->setEnabled(false);
-    }
-    return ok;
+    entry.modified = true;
+    emit dataChanged(this->index(index.row(), 0),
+                     this->index(index.row(), AccountColumnCount - 1),
+                     {Qt::DisplayRole, Qt::EditRole});
+    return true;
 }
 
-// ─── CleanUpAccountsScreen ──────────────────────────────────────────────────
+void AccountEntryModel::reload() {
+    beginResetModel();
+    m_entries.clear();
+    if (m_db) {
+        const auto& dbEntries = m_db->allEntries();
+        m_entries.reserve(dbEntries.size());
+        for (int i = 0; i < dbEntries.size(); ++i) {
+            const auto& source = dbEntries[i];
+            EditableEntry entry;
+            entry.account = source.account;
+            entry.irlName = source.irlName;
+            entry.type = static_cast<int>(source.type);
+            entry.dbIndex = i;
+            m_entries.append(entry);
+        }
+    }
+    endResetModel();
+}
+
+void AccountEntryModel::setDatabaseManager(DatabaseManager* db) {
+    m_db = db;
+    reload();
+}
+
+bool AccountEntryModel::saveChanges(QString* errorMessage) {
+    if (!m_db) {
+        if (errorMessage) *errorMessage = "The account database is unavailable.";
+        return false;
+    }
+
+    bool changed = false;
+    for (int i = 0; i < m_entries.size(); ++i) {
+        const auto& entry = m_entries[i];
+        if (!entry.modified) continue;
+
+        AccountType type = static_cast<AccountType>(entry.type);
+        const QString account = type == AccountType::IrlOnly ? QString() : entry.account;
+        if (!m_db->updateEntryByIndex(entry.dbIndex, account, entry.irlName, type)) {
+            if (errorMessage) {
+                *errorMessage = QString("Could not save row %1. The handle may already belong to another entry.")
+                    .arg(i + 1);
+            }
+            return false;
+        }
+        changed = true;
+    }
+
+    if (changed && !m_db->save()) {
+        if (errorMessage) *errorMessage = "The account database could not be written. Check the log for details.";
+        return false;
+    }
+
+    reload();
+    return true;
+}
+
+int AccountEntryModel::databaseIndex(int row) const {
+    if (row < 0 || row >= m_entries.size()) return -1;
+    return m_entries[row].dbIndex;
+}
+
+AccountFilterProxyModel::AccountFilterProxyModel(QObject* parent)
+    : QSortFilterProxyModel(parent), m_missingNamesOnly(false) {
+    setFilterKeyColumn(-1);
+    setFilterCaseSensitivity(Qt::CaseInsensitive);
+}
+
+void AccountFilterProxyModel::setMissingNamesOnly(bool enabled) {
+    if (m_missingNamesOnly == enabled) return;
+    beginFilterChange();
+    m_missingNamesOnly = enabled;
+    endFilterChange(Direction::Rows);
+}
+
+bool AccountFilterProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex& sourceParent) const {
+    if (m_missingNamesOnly) {
+        const QModelIndex nameIndex = sourceModel()->index(sourceRow, NameColumnIndex, sourceParent);
+        if (!nameIndex.data(Qt::DisplayRole).toString().trimmed().isEmpty()) return false;
+    }
+    return QSortFilterProxyModel::filterAcceptsRow(sourceRow, sourceParent);
+}
 
 CleanUpAccountsScreen::CleanUpAccountsScreen(QWidget* parent)
-    : QWidget(parent), m_db(nullptr)
-{
-    m_mainLayout = new QVBoxLayout(this);
-    m_mainLayout->setSpacing(12);
-    m_mainLayout->setContentsMargins(20, 20, 20, 20);
+    : QWidget(parent), m_db(nullptr), m_model(nullptr), m_filterModel(nullptr),
+      m_subtitleLabel(nullptr), m_searchEdit(nullptr), m_missingNamesOnly(nullptr),
+      m_accountsView(nullptr), m_saveButton(nullptr), m_removeButton(nullptr),
+      m_backButton(nullptr) {
+    auto* mainLayout = new QVBoxLayout(this);
+    mainLayout->setSpacing(10);
+    mainLayout->setContentsMargins(20, 20, 20, 20);
 
-    // Title
-    m_titleLabel = new QLabel("Clean Up Accounts", this);
-    m_titleLabel->setAlignment(Qt::AlignCenter);
-    QFont titleFont = m_titleLabel->font();
+    auto* titleLabel = new QLabel("Clean Up Accounts", this);
+    titleLabel->setAlignment(Qt::AlignCenter);
+    QFont titleFont = titleLabel->font();
     titleFont.setPointSize(24);
     titleFont.setBold(true);
-    m_titleLabel->setFont(titleFont);
-    m_mainLayout->addWidget(m_titleLabel);
+    titleLabel->setFont(titleFont);
+    mainLayout->addWidget(titleLabel);
 
-    // Subtitle
-    m_subtitleLabel = new QLabel(
-        "Accounts below don't have an IRL name. Enter names to clean them up.", this);
+    m_subtitleLabel = new QLabel("Search, edit, or remove entries in your account database.", this);
     m_subtitleLabel->setAlignment(Qt::AlignCenter);
-    QFont subFont = m_subtitleLabel->font();
-    subFont.setPointSize(12);
-    m_subtitleLabel->setFont(subFont);
-    m_mainLayout->addWidget(m_subtitleLabel);
+    mainLayout->addWidget(m_subtitleLabel);
 
-    // Scrollable accounts list
-    auto* scrollArea = new QScrollArea(this);
-    scrollArea->setWidgetResizable(true);
-    scrollArea->setMinimumHeight(400);
+    auto* filterLayout = new QHBoxLayout();
+    m_searchEdit = new QLineEdit(this);
+    m_searchEdit->setPlaceholderText("Search handles or names...");
+    filterLayout->addWidget(m_searchEdit, 1);
+    m_missingNamesOnly = new QCheckBox("Missing names only", this);
+    filterLayout->addWidget(m_missingNamesOnly);
+    mainLayout->addLayout(filterLayout);
 
-    auto* listContainer = new QWidget();
-    m_accountsList = new QListWidget(listContainer);
-    m_accountsList->setSpacing(4);
-    m_accountsList->setSelectionMode(QAbstractItemView::NoSelection);
-    m_accountsList->setFocusPolicy(Qt::NoFocus);
+    m_accountsView = new QTableView(this);
+    m_accountsView->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_accountsView->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_accountsView->setEditTriggers(QAbstractItemView::DoubleClicked
+        | QAbstractItemView::EditKeyPressed);
+    m_accountsView->setAlternatingRowColors(true);
+    m_accountsView->verticalHeader()->hide();
+    m_accountsView->horizontalHeader()->setStretchLastSection(true);
+    m_accountsView->setItemDelegateForColumn(TypeColumnIndex, new AccountTypeDelegate(m_accountsView));
+    mainLayout->addWidget(m_accountsView, 1);
 
-    auto* listLayout = new QVBoxLayout(listContainer);
-    listLayout->setContentsMargins(0, 0, 0, 0);
-    listLayout->addWidget(m_accountsList);
-    scrollArea->setWidget(listContainer);
-
-    m_mainLayout->addWidget(scrollArea, 1);
-
-    // Buttons
     auto* buttonLayout = new QHBoxLayout();
-    buttonLayout->setSpacing(12);
-
     m_backButton = new QPushButton("Back to Menu", this);
     m_backButton->setMinimumHeight(40);
-    QFont btnFont = m_backButton->font();
-    btnFont.setPointSize(12);
-    m_backButton->setFont(btnFont);
     buttonLayout->addWidget(m_backButton);
-
     buttonLayout->addStretch();
-
-    m_saveButton = new QPushButton("Save All", this);
+    m_removeButton = new QPushButton("Remove Selected", this);
+    m_removeButton->setMinimumHeight(40);
+    buttonLayout->addWidget(m_removeButton);
+    m_saveButton = new QPushButton("Save Changes", this);
     m_saveButton->setMinimumHeight(40);
-    m_saveButton->setFont(btnFont);
-    m_saveButton->setObjectName("saveButton");
     buttonLayout->addWidget(m_saveButton);
+    mainLayout->addLayout(buttonLayout);
 
-    m_mainLayout->addLayout(buttonLayout);
+    m_model = new AccountEntryModel(m_db, this);
+    m_filterModel = new AccountFilterProxyModel(this);
+    m_filterModel->setSourceModel(m_model);
+    m_accountsView->setModel(m_filterModel);
+    m_accountsView->setColumnWidth(AccountColumnIndex, 260);
+    m_accountsView->setColumnWidth(NameColumnIndex, 260);
+    m_accountsView->setColumnWidth(TypeColumnIndex, 130);
 
-    // Connect buttons
+    connect(m_searchEdit, &QLineEdit::textChanged, m_filterModel,
+            &QSortFilterProxyModel::setFilterFixedString);
+    connect(m_missingNamesOnly, &QCheckBox::toggled, m_filterModel,
+            &AccountFilterProxyModel::setMissingNamesOnly);
     connect(m_saveButton, &QPushButton::clicked,
-            this, &CleanUpAccountsScreen::handleSaveAll);
+            this, &CleanUpAccountsScreen::handleSaveChanges);
+    connect(m_removeButton, &QPushButton::clicked,
+            this, &CleanUpAccountsScreen::handleRemoveSelected);
     connect(m_backButton, &QPushButton::clicked,
             this, &CleanUpAccountsScreen::handleBackToMenu);
+    connect(m_accountsView->selectionModel(), &QItemSelectionModel::selectionChanged,
+            this, [this]() {
+                m_removeButton->setEnabled(m_accountsView->selectionModel()->hasSelection());
+            });
+    m_removeButton->setEnabled(false);
 }
 
 void CleanUpAccountsScreen::setDatabaseManager(DatabaseManager* db) {
     m_db = db;
+    m_model->setDatabaseManager(db);
 }
 
 void CleanUpAccountsScreen::refreshAccountsList() {
-    m_accountsList->clear();
-    buildAccountsList();
+    m_model->reload();
 }
 
-void CleanUpAccountsScreen::buildAccountsList() {
-    if (!m_db) return;
-
-    const auto& entries = m_db->allEntries();
-    int emptyCount = 0;
-
-    for (int i = 0; i < entries.size(); ++i) {
-        const auto& entry = entries[i];
-        // Only show entries without an IRL name
-        if (entry.irlName.trimmed().isEmpty()) {
-            auto* item = new QListWidgetItem(m_accountsList);
-            auto* row = new AccountEditRow(i, entry.account, entry.irlName, m_db);
-            item->setSizeHint(QSize(0, 50));
-            m_accountsList->addItem(item);
-            m_accountsList->setItemWidget(item, row);
-            emptyCount++;
-        }
+void CleanUpAccountsScreen::handleSaveChanges() {
+    QString errorMessage;
+    if (!m_model->saveChanges(&errorMessage)) {
+        QMessageBox::warning(this, "Changes Not Saved", errorMessage);
+        return;
     }
-
-    if (emptyCount == 0) {
-        auto* item = new QListWidgetItem("All accounts have names! ✓", m_accountsList);
-        item->setTextAlignment(Qt::AlignCenter);
-        QFont font = item->font();
-        font.setPointSize(14);
-        font.setBold(true);
-        item->setFont(font);
-        m_accountsList->addItem(item);
-        m_saveButton->setEnabled(false);
-    } else {
-        m_subtitleLabel->setText(
-            QString("Found %1 account(s) without IRL names. Enter names below.")
-                .arg(emptyCount));
-        m_saveButton->setEnabled(true);
-    }
+    QMessageBox::information(this, "Accounts Saved", "Account changes have been saved.");
 }
 
-void CleanUpAccountsScreen::handleSaveAll() {
-    int savedCount = 0;
-    int failedCount = 0;
+void CleanUpAccountsScreen::handleRemoveSelected() {
+    const QModelIndex proxyIndex = m_accountsView->currentIndex();
+    if (!proxyIndex.isValid()) return;
 
-    for (int i = 0; i < m_accountsList->count(); ++i) {
-        auto* item = m_accountsList->item(i);
-        auto* row = qobject_cast<AccountEditRow*>(m_accountsList->itemWidget(item));
-        if (row) {
-            if (row->apply()) {
-                savedCount++;
-            } else {
-                failedCount++;
-            }
-        }
-    }
+    const QModelIndex sourceIndex = m_filterModel->mapToSource(proxyIndex);
+    const int dbIndex = m_model->databaseIndex(sourceIndex.row());
+    if (dbIndex < 0) return;
 
-    bool ok = m_db->save();
-    if (!ok) {
-        QMessageBox::critical(this, "Save Failed",
-            "Failed to save the database file. Check the log for details.");
+    const auto answer = QMessageBox::question(this, "Remove Account Entry",
+        "Remove this entry from the account database? This does not delete any files.",
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    if (answer != QMessageBox::Yes) return;
+
+    if (!m_db->removeEntryByIndex(dbIndex)) {
+        QMessageBox::critical(this, "Remove Failed", "The entry is no longer available.");
         return;
     }
 
-    if (failedCount > 0) {
-        QMessageBox::warning(this, "Partial Save",
-            QString("Saved %1 account(s), but %2 failed (empty names).")
-                .arg(savedCount).arg(failedCount));
-    } else {
-        QMessageBox::information(this, "Accounts Saved",
-            QString("✓ Successfully saved %1 account(s) to the database.").arg(savedCount));
+    m_model->reload();
+    if (!m_db->save()) {
+        QMessageBox::critical(this, "Save Failed",
+            "The entry was removed in this session, but the account database could not be written. Check the log for details.");
+        return;
     }
-    refreshAccountsList();
 }
 
 void CleanUpAccountsScreen::handleBackToMenu() {

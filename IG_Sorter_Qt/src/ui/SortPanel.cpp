@@ -64,23 +64,18 @@ void GhostLineEdit::clearGhost() {
     }
 }
 void GhostLineEdit::updateGhostGeometry() {
-    if (m_ghost.isEmpty() || text().isEmpty()) {
+    if (m_ghost.isEmpty() || text().isEmpty() || cursorPosition() != text().length()) {
         m_ghostRect = QRect();
         return;
     }
 
     const QFontMetrics fm(font());
-    const int textWidth = fm.horizontalAdvance(text());
-
     QStyleOptionFrame opt;
     initStyleOption(&opt);
     const QRect textRect = style()->subElementRect(QStyle::SE_LineEditContents, &opt, this);
-
-    const int x = textRect.x() + textWidth + 4;
-    const int y = textRect.y();
-    const int h = textRect.height();
-
-    m_ghostRect = QRect(x, y, fm.horizontalAdvance(m_ghost) + 4, h);
+    const int x = cursorRect().left();
+    const int baseline = textRect.y() + (textRect.height() - fm.height()) / 2 + fm.ascent();
+    m_ghostRect = QRect(x, baseline, fm.horizontalAdvance(m_ghost) + 4, fm.height());
 }
 
 bool GhostLineEdit::event(QEvent* event) {
@@ -106,12 +101,10 @@ void GhostLineEdit::paintEvent(QPaintEvent* event) {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
 
-    QFont ghostFont = font();
-    ghostFont.setItalic(true);
-    painter.setFont(ghostFont);
+    painter.setFont(font());
     painter.setPen(QColor("#999999"));
 
-    painter.drawText(m_ghostRect, Qt::AlignVCenter | Qt::AlignLeft, m_ghost);
+    painter.drawText(m_ghostRect.topLeft(), m_ghost);
 }
 
 void GhostLineEdit::resizeEvent(QResizeEvent* event) {
@@ -229,6 +222,8 @@ SortPanel::SortPanel(QWidget* parent)
     // Update ghost text on any text change
     connect(m_unknownNameEdit, &QLineEdit::textChanged,
             this, &SortPanel::updateGhostText);
+    connect(m_unknownNameEdit, &QLineEdit::cursorPositionChanged,
+            this, [this]() { updateGhostText(); });
 
     // Tab accepted — commit ghost completion
     connect(m_unknownNameEdit, &GhostLineEdit::tabPressed, this, [this]() {
@@ -298,6 +293,9 @@ SortPanel::SortPanel(QWidget* parent)
 
     // Quick-fill name buttons (favorites) for IrlOnly sources
     m_favoritesWidget = new QWidget(this);
+    // Buttons are trimmed to the available width during resize events, so
+    // their current widths must not impose a minimum width on the window.
+    m_favoritesWidget->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     m_favoritesLayout = new QGridLayout(m_favoritesWidget);
     m_favoritesLayout->setContentsMargins(0, 0, 0, 0);
     m_favoritesLayout->setHorizontalSpacing(6);
@@ -514,7 +512,7 @@ void SortPanel::updateGhostText() {
     if (m_suppressGhost) return;
 
     const QString currentText = m_unknownNameEdit->text();
-    if (currentText.isEmpty()) {
+    if (currentText.isEmpty() || m_unknownNameEdit->cursorPosition() != currentText.length()) {
         m_unknownNameEdit->clearGhost();
         return;
     }
@@ -566,13 +564,14 @@ void SortPanel::rebuildFolderButtons() {
 }
 
 void SortPanel::setQuickFillNames(const QStringList& names) {
-    // Always clear existing buttons and stretches first
+    // Remove old buttons from the layout before scheduling them for deletion.
+    for (auto* btn : m_favoriteButtons) {
+        m_favoritesLayout->removeWidget(btn);
+        btn->deleteLater();
+    }
     m_favoriteButtons.clear();
     while (m_favoritesLayout->count() > 0) {
         QLayoutItem* item = m_favoritesLayout->takeAt(0);
-        if (QWidget* widget = item->widget()) {
-            widget->deleteLater();
-        }
         delete item;
     }
 
@@ -591,7 +590,6 @@ void SortPanel::setQuickFillNames(const QStringList& names) {
         btn->setFont(font);
         btn->setMinimumHeight(32);
         btn->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
-        btn->setCheckable(true);
         const int nameLen = name.length();
         connect(btn, &QPushButton::clicked, this, [this, name, nameLen]() {
             m_unknownNameEdit->setText(name);
@@ -610,22 +608,26 @@ void SortPanel::layoutFavoriteButtons() {
     const QMargins margins = m_mainLayout->contentsMargins();
     const int availableWidth = qMax(1, width() - margins.left() - margins.right());
     const int spacing = m_favoritesLayout->horizontalSpacing();
-    int row = 0;
-    int column = 0;
     int usedWidth = 0;
+    int column = 0;
+    bool hasRoom = true;
 
     for (auto* btn : m_favoriteButtons) {
         m_favoritesLayout->removeWidget(btn);
-
         const int buttonWidth = qMin(btn->sizeHint().width(), availableWidth);
-        if (column > 0 && usedWidth + spacing + buttonWidth > availableWidth) {
-            ++row;
-            column = 0;
-            usedWidth = 0;
+
+        const int nextWidth = usedWidth == 0
+            ? buttonWidth
+            : usedWidth + spacing + buttonWidth;
+        if (!hasRoom || nextWidth > availableWidth) {
+            hasRoom = false;
+            btn->hide();
+            continue;
         }
 
         btn->setMaximumWidth(availableWidth);
-        m_favoritesLayout->addWidget(btn, row, column++);
-        usedWidth += (column > 1 ? spacing : 0) + buttonWidth;
+        m_favoritesLayout->addWidget(btn, 0, column++);
+        btn->show();
+        usedWidth = nextWidth;
     }
 }

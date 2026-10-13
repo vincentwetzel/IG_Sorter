@@ -13,10 +13,12 @@ struct FileGroup {
     QString     irlName;          // resolved from DB; empty if unknown
     QString     postTimestamp;    // e.g. "2026-03-13_15-30-00"
     QStringList filePaths;        // full paths
+    SourceType  sourceType;       // distinguishes real IG accounts from source labels like "Instagram"
     bool        isKnown;          // true if account exists in DB
     AccountType accountType;      // Personal, Curator, or IrlOnly
 
-    FileGroup() : isKnown(false), accountType(AccountType::Personal) {}
+    FileGroup() : sourceType(SourceType::Unknown), isKnown(false),
+                  accountType(AccountType::Personal) {}
 };
 
 Q_DECLARE_METATYPE(QList<FileGroup>)

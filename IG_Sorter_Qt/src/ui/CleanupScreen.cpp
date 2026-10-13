@@ -73,6 +73,18 @@ void ResolutionRow::apply() {
         return;
     }
 
+    // A name already represented by an account-backed database entry is
+    // resolved; don't add another name-only IRL entry when the handle is blank.
+    if (account.isEmpty() && m_db->hasIrlName(m_irlName)) {
+        LogManager::instance()->info(
+            QString("ResolutionRow::apply: '%1' already exists; no name-only entry added.")
+                .arg(m_irlName));
+        m_parentLayout->removeWidget(this);
+        deleteLater();
+        emit resolved();
+        return;
+    }
+
     bool added = false;
     if (type != AccountType::IrlOnly && !account.isEmpty()) {
         added = m_db->addEntry(account, m_irlName, type);

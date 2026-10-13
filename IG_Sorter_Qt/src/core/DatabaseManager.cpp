@@ -5,6 +5,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSaveFile>
 
 #include "utils/LogManager.h"
 
@@ -84,15 +85,25 @@ bool DatabaseManager::save() {
     LogManager::instance()->info(
         QString("Saving DB to %1 (%2 entries)").arg(absPath).arg(arr.size()));
 
-    QFile file(m_dbPath);
+    QSaveFile file(m_dbPath);
     if (!file.open(QIODevice::WriteOnly)) {
         LogManager::instance()->error(
             QString("Failed to open DB for writing: %1").arg(m_dbPath));
         return false;
     }
 
-    file.write(doc.toJson());
-    file.close();
+    const QByteArray json = doc.toJson();
+    if (file.write(json) != json.size()) {
+        LogManager::instance()->error(
+            QString("Failed to write complete DB file: %1").arg(m_dbPath));
+        file.cancelWriting();
+        return false;
+    }
+    if (!file.commit()) {
+        LogManager::instance()->error(
+            QString("Failed to replace DB file: %1").arg(m_dbPath));
+        return false;
+    }
     LogManager::instance()->info(QString("DB saved successfully."));
     return true;
 }
@@ -125,6 +136,13 @@ bool DatabaseManager::addEntry(const QString& account, const QString& irlName, A
         return false;
     }
 
+    // A name-only row is an alias for a person, not a separate account. Avoid
+    // recreating one when an account-backed entry already has this name.
+    if (lowerAccount.isEmpty() && !normalizeIrlName(irlName).isEmpty()
+        && hasIrlName(irlName)) {
+        return false;
+    }
+
     PersonEntry entry;
     entry.account = lowerAccount.isEmpty() ? QString() : lowerAccount;
     entry.irlName = normalizeIrlName(irlName);
@@ -146,14 +164,24 @@ bool DatabaseManager::removeEntry(const QString& account) {
         return false;
     }
 
-    int index = it.value();
-    m_accountIndex.erase(it);
+    return removeEntryByIndex(it.value());
+}
+
+bool DatabaseManager::removeEntryByIndex(int index) {
+    if (index < 0 || index >= m_entries.size()) {
+        return false;
+    }
+
+    const QString account = m_entries[index].account;
+    if (!account.isEmpty()) {
+        m_accountIndex.remove(account);
+    }
     m_entries.removeAt(index);
 
-    // Adjust indices of shifted entries in the index map instead of rebuilding
-    for (auto mapIt = m_accountIndex.begin(); mapIt != m_accountIndex.end(); ++mapIt) {
-        if (mapIt.value() > index) {
-            mapIt.value()--;
+    m_accountIndex.clear();
+    for (int i = 0; i < m_entries.size(); ++i) {
+        if (!m_entries[i].account.isEmpty()) {
+            m_accountIndex[m_entries[i].account] = i;
         }
     }
 
@@ -185,6 +213,12 @@ bool DatabaseManager::updateEntryByIndex(int index, const QString& newAccount,
 
     QString oldAccount = m_entries[index].account;
     QString newAccountLower = newAccount.isEmpty() ? QString() : newAccount.toLower();
+    const auto duplicate = m_accountIndex.constFind(newAccountLower);
+    if (!newAccountLower.isEmpty() && duplicate != m_accountIndex.cend()
+        && duplicate.value() != index) {
+        return false;
+    }
+
     m_entries[index].account = newAccountLower;
     m_entries[index].irlName = normalizeIrlName(newName);
     m_entries[index].type = newType;
